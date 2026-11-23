@@ -1,0 +1,1269 @@
+/* src/pages/admin/tabs/KitchenDisplayTab.css */
+
+.kitchen-display-tab {
+  box-sizing: border-box;
+  padding: clamp(14px, 2vw, 24px);
+  background: linear-gradient(135deg, #f8fafc 0%, #eef6f5 100%);
+  min-height: 100%;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+
+  /* Container queries: the tab sits inside .admin-content (280px sidebar +
+     30px padding) on one page and full-bleed on another, so it must respond
+     to its own available width, not the viewport width. */
+  container-type: inline-size;
+  container-name: kds;
+}
+
+.kitchen-display-tab.tv-mode {
+  padding: 0;
+}
+
+.kitchen-display-tab.tv-mode .kds-header {
+  display: none;
+}
+
+.kitchen-display-tab.tv-mode .kds-stats,
+.kitchen-display-tab.tv-mode .kds-controls {
+  display: none;
+}
+
+.kitchen-display-tab.tv-mode .kds-container {
+  max-width: none;
+}
+
+.kitchen-display-tab.tv-mode .kds-queue-head,
+.kitchen-display-tab.tv-mode .kds-row {
+  grid-template-columns: 62px 150px minmax(0, 1fr) 96px 112px 190px 150px;
+  grid-template-areas: "position order items ordered elapsed chef delivery";
+}
+
+.kitchen-display-tab.tv-mode .kds-col-action {
+  display: none;
+}
+
+.kitchen-display-tab.tv-mode .kds-queue-head {
+  font-size: clamp(16px, 1.15vw, 22px);
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #34495e;
+}
+
+.kitchen-display-tab.tv-mode .kds-row {
+  min-height: 94px;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+.kitchen-display-tab.tv-mode .kds-queue-head .kds-col-position { color: #b42318; }
+.kitchen-display-tab.tv-mode .kds-queue-head .kds-col-order { color: #1d4ed8; }
+.kitchen-display-tab.tv-mode .kds-queue-head .kds-col-items { color: #0f766e; }
+.kitchen-display-tab.tv-mode .kds-queue-head .kds-col-ordered { color: #6d28d9; }
+.kitchen-display-tab.tv-mode .kds-queue-head .kds-col-elapsed { color: #c2410c; }
+.kitchen-display-tab.tv-mode .kds-queue-head .kds-col-chef { color: #1e40af; }
+.kitchen-display-tab.tv-mode .kds-queue-head .kds-col-delivery { color: #be185d; }
+
+.kitchen-display-tab.tv-mode .kds-col-order,
+.kitchen-display-tab.tv-mode .kds-col-items,
+.kitchen-display-tab.tv-mode .kds-col-ordered,
+.kitchen-display-tab.tv-mode .kds-col-elapsed,
+.kitchen-display-tab.tv-mode .kds-col-chef,
+.kitchen-display-tab.tv-mode .kds-col-delivery {
+  align-self: stretch;
+  padding: 9px 10px;
+  border-left: 4px solid transparent;
+  border-radius: 8px;
+}
+
+.kitchen-display-tab.tv-mode .kds-col-order {
+  background: #eff6ff;
+  border-left-color: #3b82f6;
+}
+
+.kitchen-display-tab.tv-mode .kds-col-items {
+  align-content: center;
+  background: #ecfdf5;
+  border-left-color: #0f766e;
+}
+
+.kitchen-display-tab.tv-mode .kds-col-ordered {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f3ff;
+  border-left-color: #8b5cf6;
+}
+
+.kitchen-display-tab.tv-mode .kds-col-elapsed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff7ed;
+  border-left-color: #ea580c;
+}
+
+.kitchen-display-tab.tv-mode .kds-col-chef {
+  background: #eff6ff;
+  border-left-color: #2563eb;
+}
+
+.kitchen-display-tab.tv-mode .kds-col-delivery {
+  background: #fdf2f8;
+  border-left-color: #db2777;
+}
+
+.kitchen-display-tab.tv-mode .kds-position-badge {
+  width: 48px;
+  height: 48px;
+  font-size: clamp(22px, 1.4vw, 30px);
+  background: #c0392b;
+}
+
+.kitchen-display-tab.tv-mode .kds-order-number {
+  color: #1e40af;
+  font-size: clamp(21px, 1.35vw, 28px);
+}
+
+.kitchen-display-tab.tv-mode .kds-item {
+  font-size: clamp(17px, 1.1vw, 22px);
+  padding: 7px 12px;
+  background: #d1fae5;
+  border-color: #6ee7b7;
+}
+
+.kitchen-display-tab.tv-mode .kds-item-qty { color: #047857; }
+
+.kitchen-display-tab.tv-mode .kds-ordered-time {
+  color: #5b21b6;
+  font-size: clamp(16px, 1vw, 20px);
+  font-weight: 700;
+}
+
+.kitchen-display-tab.tv-mode .kds-elapsed-time {
+  padding: 8px 12px;
+  background: #ffedd5;
+  color: #9a3412;
+  font-size: clamp(21px, 1.4vw, 29px);
+}
+
+.kitchen-display-tab.tv-mode .kds-chef-name,
+.kitchen-display-tab.tv-mode .kds-delivery-name {
+  font-size: clamp(16px, 1vw, 20px);
+  padding: 8px 12px;
+}
+
+.kitchen-display-tab.tv-mode .kds-chef-name {
+  color: #1e40af;
+  background: #dbeafe;
+}
+
+.kitchen-display-tab.tv-mode .kds-delivery-name {
+  color: #9d174d;
+  background: #fce7f3;
+}
+
+.kitchen-display-tab.tv-mode .kds-chef-select,
+.kitchen-display-tab.tv-mode .kds-delivery-select {
+  min-height: 48px;
+  font-size: clamp(15px, 0.95vw, 19px);
+}
+
+.kitchen-display-tab *,
+.kitchen-display-tab *::before,
+.kitchen-display-tab *::after {
+  box-sizing: border-box;
+}
+
+.kds-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  font-size: 18px;
+  color: #7f8c8d;
+}
+
+/* Header */
+.kds-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0 auto 30px;
+  gap: 20px;
+  max-width: 1600px;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.kds-title {
+  font-size: clamp(22px, 3vw, 32px);
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0 0 5px;
+  line-height: 1.15;
+}
+
+.kds-subtitle {
+  color: #7f8c8d;
+  font-size: 14px;
+  margin: 0;
+}
+
+.kds-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.kds-refresh {
+  min-height: 44px;
+  padding: 11px 18px;
+  background: linear-gradient(135deg, #0f766e, #0d9488);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.2);
+}
+
+.kds-tv-mode {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 18px;
+  background: #ffffff;
+  color: #0f766e;
+  border: 1px solid #0f766e;
+  border-radius: 8px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+.kds-tv-mode:hover {
+  background: #f0fdfa;
+  color: #0b5f59;
+  transform: translateY(-2px);
+}
+
+.kds-refresh:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(52, 152, 219, 0.3);
+}
+
+.kds-connection {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+
+.kds-connection.online {
+  background: #d4edda;
+  color: #155724;
+}
+
+.kds-connection.offline {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+/* Stats Cards */
+.kds-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 15px;
+  margin-bottom: 30px;
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+/* NOTE: all classes here are prefixed with .kds-* so they cannot be
+   overridden by the shared dashboard globals (.stat-card, .status-badge,
+   .stat-icon in AdminDashboard.css), which use !important. */
+.kds-stat-card {
+  background: white;
+  padding: 18px;
+  border-radius: 12px;
+  text-align: center;
+  border-left: 5px solid #3498db;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  min-width: 0;
+}
+
+.kds-stat-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+}
+
+.kds-stat-card.pending { border-left-color: #f39c12; }
+.kds-stat-card.cooking { border-left-color: #e74c3c; }
+.kds-stat-card.unassigned { border-left-color: #8e44ad; }
+.kds-stat-card.urgent { border-left-color: #c0392b; }
+
+.kds-stat-icon {
+  font-size: 24px;
+  display: block;
+  margin-bottom: 8px;
+  width: auto;
+  height: auto;
+  background: none;
+  border-radius: 0;
+  margin-right: 0;
+}
+
+.kds-stat-label {
+  display: block;
+  color: #7f8c8d;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+
+.kds-stat-value {
+  display: block;
+  font-size: 28px;
+  font-weight: 700;
+  color: #2c3e50;
+}
+
+/* Controls */
+.kds-controls {
+  background: white;
+  padding: clamp(14px, 1.6vw, 22px);
+  border-radius: 12px;
+  margin-bottom: 25px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  max-width: 1600px;
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.filter-group label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c3e50;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.filter-btn {
+  min-height: 40px;
+  padding: 8px 14px;
+  background: #ecf0f1;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  color: #2c3e50;
+}
+
+.filter-btn:hover {
+  background: #d5dbdb;
+}
+
+.filter-btn.active {
+  background: linear-gradient(135deg, #3498db, #2980b9);
+  color: white;
+  border-color: #3498db;
+}
+
+/* Main Container */
+.kds-container {
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+.kds-empty {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  color: #7f8c8d;
+  font-size: 18px;
+}
+
+/* ========== KITCHEN QUEUE (one order per full-width row) ========== */
+
+.kds-board {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.kds-queue-head,
+.kds-row {
+  display: grid;
+  grid-template-columns: 62px 150px minmax(0, 1fr) 96px 112px 190px 150px 140px;
+  grid-template-areas:
+    "position order items ordered elapsed chef delivery action";
+  align-items: center;
+  gap: 14px;
+}
+
+.kds-col-position { grid-area: position; }
+.kds-col-order { grid-area: order; }
+.kds-col-items { grid-area: items; }
+.kds-col-ordered { grid-area: ordered; }
+.kds-col-elapsed { grid-area: elapsed; }
+.kds-col-chef { grid-area: chef; }
+.kds-col-delivery { grid-area: delivery; }
+.kds-col-action { grid-area: action; }
+
+.kds-queue-head {
+  padding: 0 16px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #95a5a6;
+  border-bottom: 2px solid #dfe6e9;
+}
+
+.kds-row {
+  background: #ffffff;
+  border: 1px solid #e4eaec;
+  border-left: 6px solid #3498db;
+  border-radius: 10px;
+  padding: 14px 16px;
+  min-height: 74px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+  transition: box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.kds-row:hover {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+.kds-row.status-pending { border-left-color: #f39c12; }
+.kds-row.status-confirmed { border-left-color: #3498db; }
+.kds-row.status-preparing,
+.kds-row.status-cooking { border-left-color: #e74c3c; }
+
+.kds-row.urgency-warn {
+  border-left-color: #f39c12;
+  background: linear-gradient(90deg, #fff8e6 0%, #ffffff 55%);
+}
+
+.kds-row.urgency-urgent {
+  border-left-color: #c0392b;
+  background: linear-gradient(90deg, #ffecec 0%, #ffffff 55%);
+}
+
+.kds-col-position {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.kds-position-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #2c3e50;
+  color: #fff;
+  font-size: 19px;
+  font-weight: 800;
+}
+
+.kds-row.urgency-warn .kds-position-badge { background: #f39c12; }
+.kds-row.urgency-urgent .kds-position-badge { background: #c0392b; }
+
+.kds-col-order {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+}
+
+.kds-order-number {
+  color: #2c3e50;
+  font-size: 19px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* Items */
+.kds-col-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.kds-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 10px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  font-size: 14px;
+  color: #2c3e50;
+  max-width: 100%;
+}
+
+.kds-item-qty {
+  font-weight: 800;
+  color: #0f766e;
+  white-space: nowrap;
+}
+
+.kds-item-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.kds-customer-name {
+  flex-basis: 100%;
+  padding-left: 4px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Order time */
+.kds-col-ordered {
+  text-align: center;
+}
+
+.kds-ordered-time {
+  color: #7f8c8d;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Elapsed timer */
+.kds-col-elapsed {
+  text-align: center;
+}
+
+.kds-elapsed-time {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: #f1f5f9;
+  color: #2c3e50;
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.kds-row.urgency-warn .kds-elapsed-time {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.kds-row.urgency-urgent .kds-elapsed-time {
+  background: #f8d7da;
+  color: #721c24;
+  animation: kds-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes kds-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+/* Chef select */
+.kds-col-chef {
+  min-width: 0;
+}
+
+.kds-chef-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e3a8a;
+  padding: 6px 12px;
+  background: #eff6ff;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.kds-col-delivery {
+  min-width: 0;
+}
+
+.kds-delivery-select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 2px solid #e0e7ff;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e3a8a;
+  background: linear-gradient(135deg, #eff6ff, #ffffff);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.kds-delivery-select:hover {
+  border-color: #60a5fa;
+  background: linear-gradient(135deg, #dbeafe, #ffffff);
+}
+
+.kds-delivery-select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+}
+
+.kds-delivery-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c3e50;
+  padding: 6px 12px;
+  background: #ecf0f1;
+  border-radius: 6px;
+  display: inline-block;
+}
+
+.kds-delivery-name.unassigned {
+  color: #e67e22;
+  font-style: italic;
+  background: #fdf3e7;
+}
+
+.kds-chef-select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 2px solid #dfe6e9;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c3e50;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.kds-chef-select:hover {
+  border-color: #3498db;
+}
+
+.kds-chef-select:focus {
+  outline: none;
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.12);
+}
+
+/* Action */
+.kds-col-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.kds-complete-btn {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 14px;
+  background: linear-gradient(135deg, #2ecc71, #27ae60);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.25s ease;
+}
+
+.kds-complete-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 14px rgba(46, 204, 113, 0.4);
+}
+
+.kds-complete-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.kds-complete-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Shared status badge (prefixed to avoid AdminDashboard.css globals) */
+.kds-status-badge {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.kds-status-badge.pending { background: #fff3cd; color: #856404; }
+.kds-status-badge.confirmed { background: #d1ecf1; color: #0c5460; }
+.kds-status-badge.preparing,
+.kds-status-badge.cooking { background: #f8d7da; color: #721c24; }
+.kds-status-badge.ready { background: #d4edda; color: #155724; }
+
+/* ==========================================================================
+   RESPONSIVE
+   Driven by @container on .kitchen-display-tab, NOT viewport width.
+   This tab is rendered both inside .admin-content (280px fixed sidebar +
+   30px padding, so a 1440px laptop only offers ~1100px) and full-bleed in
+   StaffDashboard, so the only reliable signal is the tab's own inline size.
+
+   Board (8 cols) : >= 1180px container
+   Tight board     : 980 – 1180px
+   Tablet grid     : 680 – 980px
+   Cards           : < 680px
+   ========================================================================== */
+
+/* --- Tight board: still a full board, smaller tracks and type --- */
+@container kds (max-width: 1180px) {
+  .kds-queue-head,
+  .kds-row {
+    grid-template-columns: 50px 108px minmax(0, 1fr) 76px 92px 142px 116px 104px;
+    gap: 9px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .kds-queue-head {
+    padding-left: 12px;
+    padding-right: 12px;
+    font-size: 10px;
+  }
+
+  .kds-position-badge {
+    width: 32px;
+    height: 32px;
+    font-size: 15px;
+  }
+
+  .kds-order-number { font-size: 16px; }
+  .kds-elapsed-time { font-size: 17px; padding: 5px 8px; }
+  .kds-ordered-time { font-size: 13px; }
+  .kds-item { font-size: 12px; padding: 4px 8px; gap: 4px; }
+  .kds-chef-select,
+  .kds-delivery-select { min-height: 38px; padding: 6px 6px; font-size: 12px; }
+  .kds-chef-name,
+  .kds-delivery-name { font-size: 12px; padding: 5px 8px; }
+  .kds-complete-btn { min-height: 38px; padding: 8px 8px; font-size: 13px; }
+  .kds-stat-card { padding: 14px 12px; }
+  .kds-stat-value { font-size: 24px; }
+}
+
+/* --- Tablet: stacked grid; chef/delivery share a row with the action --- */
+@container kds (max-width: 980px) {
+  .kds-queue-head {
+    display: none;
+  }
+
+  .kds-row {
+    grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "position order    order"
+      "position items    items"
+      "ordered elapsed   elapsed"
+      "chef    chef      chef"
+      "delivery delivery action";
+    row-gap: 12px;
+    column-gap: 12px;
+    padding: 16px;
+  }
+
+  .kds-col-chef,
+  .kds-col-delivery {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* inline "Label" text ahead of each control */
+  .kds-col-chef::before,
+  .kds-col-delivery::before {
+    content: attr(data-label);
+    flex: 0 0 auto;
+    min-width: 78px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #95a5a6;
+  }
+
+  .kds-col-chef > *,
+  .kds-col-delivery > * {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .kds-chef-name,
+  .kds-delivery-name {
+    display: block;
+  }
+
+  .kds-col-action {
+    align-self: end;
+  }
+
+  .kds-stats {
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+  }
+}
+
+/* --- Cards: one order per stacked card --- */
+@container kds (max-width: 680px) {
+  .kitchen-display-tab {
+    padding: 14px;
+  }
+
+  .kds-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+    margin-bottom: 20px;
+  }
+
+  .kds-title,
+  .kds-subtitle {
+    overflow-wrap: anywhere;
+  }
+
+  .kds-subtitle { font-size: 13px; }
+
+  .kds-header-actions {
+    width: 100%;
+    gap: 10px;
+  }
+
+  .kds-connection {
+    flex: 1 1 auto;
+    text-align: center;
+    padding: 12px 10px;
+    font-size: 13px;
+  }
+
+  .kds-refresh {
+    flex: 1 1 auto;
+    min-height: 44px;
+  }
+
+  .kds-tv-mode {
+    flex: 1 1 auto;
+  }
+
+  .kds-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  .kds-stat-card { padding: 14px 12px; }
+  .kds-stat-value { font-size: 24px; }
+
+  .filter-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .filter-btn {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 6px;
+    font-size: 12px;
+  }
+
+  .kds-controls { margin-bottom: 18px; }
+
+  .kds-row {
+    grid-template-columns: 46px minmax(0, 1fr);
+    grid-template-areas:
+      "position order"
+      "items    items"
+      "ordered  elapsed"
+      "chef     chef"
+      "delivery delivery"
+      "action   action";
+    row-gap: 12px;
+    padding: 14px;
+    border-radius: 12px;
+  }
+
+  /* each field carries its own label once the header row is gone */
+  .kds-col-ordered,
+  .kds-col-elapsed {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+  }
+
+  .kds-col-ordered::before,
+  .kds-col-elapsed::before {
+    content: attr(data-label);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: #95a5a6;
+  }
+
+  .kds-col-items {
+    border-top: 1px dashed #e4eaec;
+    border-bottom: 1px dashed #e4eaec;
+    padding: 12px 0;
+  }
+
+  .kds-item {
+    font-size: 14px;
+    padding: 6px 11px;
+  }
+
+  .kds-col-chef,
+  .kds-col-delivery {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  .kds-col-chef::before,
+  .kds-col-delivery::before {
+    min-width: 0;
+  }
+
+  .kds-chef-select,
+  .kds-delivery-select {
+    min-height: 46px;
+    font-size: 14px;
+  }
+
+  .kds-complete-btn {
+    min-height: 48px;
+    font-size: 15px;
+  }
+
+  .kds-empty {
+    padding: 40px 16px;
+    font-size: 16px;
+  }
+
+  .kds-loading {
+    min-height: 240px;
+    font-size: 16px;
+    padding: 0 16px;
+    text-align: center;
+  }
+}
+
+/* --- Small phones --- */
+@container kds (max-width: 460px) {
+  .kitchen-display-tab {
+    padding: 10px;
+  }
+
+  .kds-title { font-size: 21px; }
+  .kds-stats { gap: 8px; }
+
+  .kds-stat-card {
+    padding: 12px 10px;
+    border-left-width: 4px;
+  }
+
+  .kds-stat-icon { font-size: 20px; margin-bottom: 4px; }
+  .kds-stat-label { font-size: 10px; letter-spacing: 0.3px; }
+  .kds-stat-value { font-size: 21px; }
+
+  .filter-buttons {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .kds-row {
+    grid-template-columns: 38px minmax(0, 1fr);
+    padding: 12px 10px;
+    gap: 10px;
+  }
+
+  .kds-position-badge {
+    width: 30px;
+    height: 30px;
+    font-size: 14px;
+  }
+
+  .kds-order-number { font-size: 16px; }
+  .kds-elapsed-time { font-size: 17px; padding: 5px 8px; }
+  .kds-item { font-size: 13px; padding: 5px 9px; }
+}
+
+/* --- Wide / TV boards: use the extra space --- */
+@container kds (min-width: 1600px) {
+  .kds-queue-head,
+  .kds-row {
+    grid-template-columns: 70px 170px minmax(0, 1fr) 104px 120px 210px 170px 160px;
+    gap: 18px;
+  }
+
+  .kds-position-badge {
+    width: 46px;
+    height: 46px;
+    font-size: 22px;
+  }
+
+  .kds-order-number { font-size: 21px; }
+  .kds-elapsed-time { font-size: 23px; }
+  .kds-item { font-size: 15px; padding: 6px 12px; }
+  .kds-row { min-height: 84px; }
+}
+
+/* --- Fallback for browsers without container query support.
+       Mirrors the same tiers against viewport width. --- */
+@supports not (container-type: inline-size) {
+  @media (max-width: 1180px) {
+    .kds-queue-head,
+    .kds-row {
+      grid-template-columns: 50px 108px minmax(0, 1fr) 76px 92px 142px 116px 104px;
+      gap: 9px;
+    }
+
+    .kds-position-badge { width: 32px; height: 32px; font-size: 15px; }
+    .kds-order-number { font-size: 16px; }
+    .kds-elapsed-time { font-size: 17px; padding: 5px 8px; }
+    .kds-item { font-size: 12px; padding: 4px 8px; }
+  }
+
+  @media (max-width: 980px) {
+    .kds-queue-head { display: none; }
+
+    .kds-row {
+      grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-areas:
+        "position order    order"
+        "position items    items"
+        "ordered elapsed   elapsed"
+        "chef    chef      chef"
+        "delivery delivery action";
+      row-gap: 12px;
+      padding: 16px;
+    }
+
+    .kds-col-chef,
+    .kds-col-delivery {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .kds-col-chef::before,
+    .kds-col-delivery::before {
+      content: attr(data-label);
+      flex: 0 0 auto;
+      min-width: 78px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      color: #95a5a6;
+    }
+  }
+
+  @media (max-width: 680px) {
+    .kitchen-display-tab { padding: 14px; }
+
+    .kds-header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 14px;
+    }
+
+    .kds-stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .filter-buttons {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .kds-row {
+      grid-template-columns: 46px minmax(0, 1fr);
+      grid-template-areas:
+        "position order"
+        "items    items"
+        "ordered  elapsed"
+        "chef     chef"
+        "delivery delivery"
+        "action   action";
+      padding: 14px;
+    }
+
+    .kds-col-ordered,
+    .kds-col-elapsed {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 5px;
+    }
+
+    .kds-col-ordered::before,
+    .kds-col-elapsed::before {
+      content: attr(data-label);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #95a5a6;
+    }
+
+    .kds-col-chef,
+    .kds-col-delivery {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 6px;
+    }
+  }
+}
+
+/* --- Accessibility: honour reduced motion --- */
+@media (prefers-reduced-motion: reduce) {
+  .kds-row.urgency-urgent .kds-elapsed-time {
+    animation: none;
+  }
+
+  .kds-row,
+  .kds-stat-card,
+  .kds-refresh,
+  .kds-complete-btn {
+    transition: none;
+  }
+}
+
+@container kds (max-width: 1180px) {
+  .kitchen-display-tab.tv-mode .kds-queue-head,
+  .kitchen-display-tab.tv-mode .kds-row {
+    grid-template-columns: 50px 108px minmax(0, 1fr) 76px 92px 142px 116px;
+    gap: 9px;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+
+@container kds (max-width: 980px) {
+  .kitchen-display-tab.tv-mode .kds-row {
+    grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "position order order"
+      "position items items"
+      "ordered elapsed elapsed"
+      "chef chef chef"
+      "delivery delivery delivery";
+  }
+}
+
+@container kds (max-width: 680px) {
+  .kitchen-display-tab.tv-mode .kds-row {
+    grid-template-columns: 46px minmax(0, 1fr);
+    grid-template-areas:
+      "position order"
+      "items items"
+      "ordered elapsed"
+      "chef chef"
+      "delivery delivery";
+  }
+}
+
+@container kds (max-width: 460px) {
+  .kitchen-display-tab.tv-mode .kds-row {
+    grid-template-columns: 38px minmax(0, 1fr);
+  }
+}
+
+@container kds (min-width: 1600px) {
+  .kitchen-display-tab.tv-mode .kds-queue-head,
+  .kitchen-display-tab.tv-mode .kds-row {
+    grid-template-columns: 70px 170px minmax(0, 1fr) 104px 120px 210px 170px;
+  }
+}
+
+@supports not (container-type: inline-size) {
+  @media (max-width: 1180px) {
+    .kitchen-display-tab.tv-mode .kds-queue-head,
+    .kitchen-display-tab.tv-mode .kds-row {
+      grid-template-columns: 50px 108px minmax(0, 1fr) 76px 92px 142px 116px;
+      gap: 9px;
+    }
+  }
+
+  @media (max-width: 980px) {
+    .kitchen-display-tab.tv-mode .kds-row {
+      grid-template-columns: 52px minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-areas:
+        "position order order"
+        "position items items"
+        "ordered elapsed elapsed"
+        "chef chef chef"
+        "delivery delivery delivery";
+    }
+  }
+
+  @media (max-width: 680px) {
+    .kitchen-display-tab.tv-mode .kds-row {
+      grid-template-columns: 46px minmax(0, 1fr);
+      grid-template-areas:
+        "position order"
+        "items items"
+        "ordered elapsed"
+        "chef chef"
+        "delivery delivery";
+    }
+  }
+
+  @media (max-width: 460px) {
+    .kitchen-display-tab.tv-mode .kds-row {
+      grid-template-columns: 38px minmax(0, 1fr);
+    }
+  }
+}

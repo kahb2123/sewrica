@@ -1,0 +1,125 @@
+// src/App.jsx
+import React, { useLayoutEffect } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+import './themes/sewrica-theme.css';
+// Import contexts
+import { AuthProvider } from './context/AuthContext';
+import { SocketProvider } from './context/SocketContext';
+
+// Import components
+import Navbar from './components/Navbar';
+import Footer from './components/Footer';
+import GiveawayBanner from './components/GiveawayBanner';
+import PrivateRoute from './components/PrivateRoute';
+import StaffPrivateRoute from './components/StaffPrivateRoute';
+
+// Import pages
+import Home from './pages/Home';
+import Menu from './pages/Menu';
+import Cart from './pages/Cart';
+import PaymentConfirmation from './pages/PaymentConfirmation';
+import Login from './pages/Login';
+import Profile from './pages/Profile';
+import Contact from './pages/Contact';
+import Admin from './pages/admin/AdminDashboard';
+import StaffDashboard from './pages/StaffDashboard';
+import SupplyChainDashboard from './pages/SupplyChainDashboard';
+import StaffLogin from './pages/StaffLogin';
+import { useLanguage } from './context/useLanguage';
+import scrollToPageTop from './utils/scrollToPageTop';
+
+// Import CSS
+import './App.css';
+
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useLayoutEffect(() => {
+    scrollToPageTop();
+  }, [pathname]);
+
+  return null;
+}
+
+function App() {
+  const location = useLocation();
+  const { t } = useLanguage();
+  const isKitchenTvMode = location.pathname.startsWith('/admin')
+    && new URLSearchParams(location.search).get('mode') === 'tv';
+
+  return (
+    <>
+      <ScrollToTop />
+      <AuthProvider>
+        <SocketProvider>
+          <div className="App">
+            {!isKitchenTvMode && (
+              <>
+                <Navbar />
+                <GiveawayBanner />
+              </>
+            )}
+            <main className="main-content">
+              <Routes>
+                {/* Public Routes */}
+                <Route path="/" element={<Home />} />
+                <Route path="/menu" element={<Menu />} />
+                <Route path="/cart" element={<Cart />} />
+                <Route path="/order-confirmation/:orderId" element={<PaymentConfirmation />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/contact" element={<Contact />} />
+                
+                {/* Staff Login - Supporting both URLs for compatibility */}
+                <Route path="/staff-login" element={<StaffLogin />} />
+                <Route path="/staff/login" element={<StaffLogin />} />
+                
+                {/* Protected Routes */}
+                <Route path="/profile" element={
+                  <PrivateRoute>
+                    <Profile />
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/admin/*" element={
+                  <PrivateRoute adminOnly>
+                    <Admin /> {/* ← Updated: Use Admin component */}
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/supply-chain" element={
+  <StaffPrivateRoute>
+    <SupplyChainDashboard />
+  </StaffPrivateRoute>
+} />
+
+<Route path="/staff/*" element={
+  <StaffPrivateRoute>
+    <StaffDashboard />
+  </StaffPrivateRoute>
+} />
+                
+                {/* Catch-all route for 404 */}
+                <Route path="*" element={<div className="not-found">{t('Page Not Found')}</div>} />
+              </Routes>
+            </main>
+            {!isKitchenTvMode && <Footer />}
+          </div>
+        </SocketProvider>
+      </AuthProvider>
+      <ToastContainer
+        position="top-right"
+        autoClose={2500}
+        hideProgressBar={true}
+        newestOnTop={false}
+        closeOnClick
+        pauseOnHover={false}
+        pauseOnFocusLoss={false}
+        draggable={false}
+      />
+    </>
+  );
+}
+
+export default App;

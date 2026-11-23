@@ -1,0 +1,473 @@
+const MenuItem = require('../models/MenuItem');
+const MenuCategory = require('../models/MenuCategory');
+const fs = require('fs');
+const path = require('path');
+
+// @desc    Get all menu items
+// @route   GET /api/menu
+// @access  Public
+const getAllMenuItems = async (req, res) => {
+  try {
+    const { category, vegetarian, spicy, signature, minPrice, maxPrice, includeUnavailable } = req.query;
+    
+    // Build filter object
+    let filter = {};
+    
+    if (category) {
+      filter.category = category;
+    }
+    
+    if (vegetarian === 'true') {
+      filter.isVegetarian = true;
+    }
+    
+    if (spicy === 'true') {
+      filter.isSpicy = true;
+    }
+    
+    if (signature === 'true') {
+      filter.isSignature = true;
+    }
+    
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = Number(minPrice);
+      if (maxPrice) filter.price.$lte = Number(maxPrice);
+    }
+    
+    if (includeUnavailable !== 'true') {
+      filter.isAvailable = true;
+    }
+    
+    const menuItems = await MenuItem.find(filter).sort({ category: 1, name: 1 });
+    
+    res.json({
+      success: true,
+      count: menuItems.length,
+      data: menuItems
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Get single menu item
+// @route   GET /api/menu/:id
+// @access  Public
+const getMenuItemById = async (req, res) => {
+  try {
+    const menuItem = await MenuItem.findById(req.params.id);
+    
+    if (!menuItem) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found'
+      });
+    }
+    
+    res.json({
+      success: true,
+      data: menuItem
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Get menu items by category
+// @route   GET /api/menu/category/:category
+// @access  Public
+const getMenuItemsByCategory = async (req, res) => {
+  try {
+    const { category } = req.params;
+    
+    const menuItems = await MenuItem.find({ 
+      category, 
+      isAvailable: true 
+    }).sort({ name: 1 });
+    
+    res.json({
+      success: true,
+      count: menuItems.length,
+      data: menuItems
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Create new menu item
+// @route   POST /api/menu
+// @access  Private/Admin
+const createMenuItem = async (req, res) => {
+  try {
+    console.log('\n[createMenuItem] headers:', req.headers['content-type']);
+    console.log('[createMenuItem] file:', !!req.file, req.file);
+    console.log('[createMenuItem] body keys:', Object.keys(req.body));
+
+    let {
+      name, nameAm, description, fullDescription, price,
+      category, spiceLevel, prepTime, calories, isVegetarian,
+      isSpicy, isPopular, isSignature, ingredients, greekText
+    } = req.body;
+
+    // Parse boolean values (they come as strings from FormData)
+    const parseBoolean = (value) => {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+      return !!value;
+    };
+
+    // Provide server-side defaults if frontend didn't send them
+    if (!nameAm || nameAm === '') nameAm = name || '';
+    if (!fullDescription || fullDescription === '') fullDescription = description || '';
+
+    // Check if item already exists
+    const itemExists = await MenuItem.findOne({ name });
+    if (itemExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Menu item with this name already exists'
+      });
+    }
+
+    // Handle image upload - FIXED: Use req.file.path for Cloudinary URL
+    let imageUrl = 'default-food.jpg';
+    if (req.file) {
+      // For Cloudinary, the full URL is in req.file.path
+      imageUrl = req.file.path; 
+      console.log('✅ Image uploaded to Cloudinary URL:', imageUrl);
+      
+      // Also log the full file object for debugging
+      console.log('📸 File object:', {
+        filename: req.file.filename,
+        path: req.file.path,
+        size: req.file.size
+      });
+    }
+
+    const menuItem = await MenuItem.create({
+      name,
+      nameAm,
+      description,
+      fullDescription,
+      price: Number(price),
+      category,
+      image: imageUrl, // This will now be the full Cloudinary URL
+      spiceLevel: spiceLevel || '🌶️',
+      prepTime: prepTime || '15 min',
+      calories: calories || '500 kcal',
+      isVegetarian: parseBoolean(isVegetarian),
+      isSpicy: parseBoolean(isSpicy),
+      isPopular: parseBoolean(isPopular),
+      isSignature: parseBoolean(isSignature),
+      ingredients: ingredients ? (typeof ingredients === 'string' ? ingredients.split(',').map(i => i.trim()) : ingredients) : [],
+      greekText: greekText || ''
+    });
+
+    console.log('✅ Menu item created with image URL:', menuItem.image);
+
+    res.status(201).json({
+      success: true,
+      data: menuItem
+    });
+  } catch (error) {
+    console.error('❌ Error creating menu item:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Update menu item
+// @route   PUT /api/menu/:id
+// @access  Private/Admin
+const updateMenuItem = async (req, res) => {
+  try {
+    let menuItem = await MenuItem.findById(req.params.id);
+    
+    if (!menuItem) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found'
+      });
+    }
+
+    // Parse boolean values
+    const parseBoolean = (value) => {
+      if (value === 'true') return true;
+      if (value === 'false') return false;
+      return !!value;
+    };
+
+    // Handle image update with Cloudinary - FIXED
+    if (req.file) {
+      // Delete old image from Cloudinary if it exists and is from Cloudinary
+      if (menuItem.image && menuItem.image !== 'default-food.jpg' && menuItem.image.includes('cloudinary')) {
+        try {
+          // Extract public_id from the Cloudinary URL
+          // URL format: https://res.cloudinary.com/ddcgxk48k/image/upload/v1234567/sewrica-cafe/menu-items/menu-123456789
+          const urlParts = menuItem.image.split('/');
+          const publicIdWithVersion = urlParts.slice(urlParts.indexOf('upload') + 2).join('/');
+          // Remove version if present (v1234567/)
+          const publicId = publicIdWithVersion.replace(/^v\d+\//, '').split('.')[0];
+          
+          const result = await cloudinary.uploader.destroy(publicId);
+          console.log('✅ Deleted old image from Cloudinary:', result);
+        } catch (cloudinaryError) {
+          console.log('⚠️ Could not delete from Cloudinary:', cloudinaryError.message);
+        }
+      }
+      
+      // FIXED: Use req.file.path for the full Cloudinary URL
+      req.body.image = req.file.path;
+      console.log('✅ Updated with new Cloudinary image:', req.file.path);
+    }
+
+    // Parse ingredients if provided
+    if (req.body.ingredients) {
+      req.body.ingredients = typeof req.body.ingredients === 'string' 
+        ? req.body.ingredients.split(',').map(i => i.trim()) 
+        : req.body.ingredients;
+    }
+
+    // Parse boolean fields
+    ['isVegetarian', 'isSpicy', 'isPopular', 'isSignature', 'isAvailable'].forEach(field => {
+      if (req.body[field] !== undefined) {
+        req.body[field] = parseBoolean(req.body[field]);
+      }
+    });
+
+    // Parse price to number
+    if (req.body.price) {
+      req.body.price = Number(req.body.price);
+    }
+
+    menuItem = await MenuItem.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    console.log('✅ Menu item updated, image:', menuItem.image);
+
+    res.json({
+      success: true,
+      data: menuItem
+    });
+  } catch (error) {
+    console.error('❌ Error updating menu item:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Update menu item
+// @route   PUT /api/menu/:id
+// @access  Private/Admin
+
+// @desc    Delete menu item
+// @route   DELETE /api/menu/:id
+// @access  Private/Admin
+const deleteMenuItem = async (req, res) => {
+  try {
+    const menuItem = await MenuItem.findById(req.params.id);
+    
+    if (!menuItem) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found'
+      });
+    }
+
+    // Delete image file if not default
+    if (menuItem.image !== 'default-food.jpg') {
+      const imagePath = path.join(__dirname, '../../uploads', menuItem.image);
+      if (fs.existsSync(imagePath)) {
+        fs.unlinkSync(imagePath);
+      }
+    }
+
+    await menuItem.deleteOne();
+
+    res.json({
+      success: true,
+      message: 'Menu item deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Toggle availability
+// @route   PATCH /api/menu/:id/toggle
+// @access  Private/Admin
+const toggleAvailability = async (req, res) => {
+  try {
+    const menuItem = await MenuItem.findById(req.params.id);
+    
+    if (!menuItem) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found'
+      });
+    }
+
+    menuItem.isAvailable = !menuItem.isAvailable;
+    await menuItem.save();
+
+    res.json({
+      success: true,
+      data: menuItem
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+// @desc    Get all categories
+// @route   GET /api/menu/categories/all
+// @access  Public
+const getAllCategories = async (req, res) => {
+  try {
+    const builtInCategories = [
+      'burgers', 'sandwiches', 'pizza', 'traditional', 'fastfood', 'wraps',
+      'fetira', 'beverages', 'soft-drinks', 'hot-drinks', 'desserts'
+    ];
+    const [itemCategories, savedCategories] = await Promise.all([
+      MenuItem.distinct('category', {}, { maxTimeMS: 30000 }),
+      MenuCategory.find().select('value').lean()
+    ]);
+    const categories = [...new Set([
+      ...builtInCategories,
+      ...itemCategories,
+      ...savedCategories.map(({ value }) => value)
+    ])];
+    
+    res.json({
+      success: true,
+      data: categories
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message
+    });
+  }
+};
+
+const createCategory = async (req, res) => {
+  try {
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+    const rawValue = name
+      .toLowerCase()
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+    const aliases = {
+      'traditional-ethiopian': 'traditional',
+      'fast-food': 'fastfood'
+    };
+    const value = aliases[rawValue] || rawValue;
+
+    if (!name || !value) {
+      return res.status(400).json({ success: false, message: 'Enter a valid category name' });
+    }
+
+    const builtInCategories = new Set([
+      'burgers', 'sandwiches', 'pizza', 'traditional', 'fastfood', 'wraps',
+      'fetira', 'beverages', 'soft-drinks', 'hot-drinks', 'desserts'
+    ]);
+    if (builtInCategories.has(value)) {
+      return res.status(409).json({ success: false, message: 'This category already exists' });
+    }
+
+    const existing = await MenuCategory.findOne({ value });
+    if (existing || await MenuItem.exists({ category: value })) {
+      return res.status(409).json({ success: false, message: 'This category already exists' });
+    }
+
+    const category = await MenuCategory.create({ name, value });
+    res.status(201).json({ success: true, data: category });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ success: false, message: 'This category already exists' });
+    }
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Get inventory for all menu items
+// @route   GET /api/menu/inventory
+// @access  Private/Admin
+const getInventory = async (req, res) => {
+  try {
+    const inventory = await MenuItem.find({}).sort({ stockQuantity: 1, name: 1 });
+    res.json({ success: true, count: inventory.length, data: inventory });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// @desc    Update inventory quantity and reorder level
+// @route   PATCH /api/menu/:id/inventory
+// @access  Private/Admin
+const updateInventory = async (req, res) => {
+  try {
+    const stockQuantity = Number(req.body.stockQuantity);
+    const reorderLevel = Number(req.body.reorderLevel);
+
+    if (!Number.isInteger(stockQuantity) || stockQuantity < 0) {
+      return res.status(400).json({ success: false, message: 'Stock quantity must be a whole number of 0 or more' });
+    }
+    if (!Number.isInteger(reorderLevel) || reorderLevel < 0) {
+      return res.status(400).json({ success: false, message: 'Reorder level must be a whole number of 0 or more' });
+    }
+
+    const menuItem = await MenuItem.findByIdAndUpdate(
+      req.params.id,
+      { stockQuantity, reorderLevel, isAvailable: stockQuantity > 0 },
+      { new: true, runValidators: true }
+    );
+
+    if (!menuItem) {
+      return res.status(404).json({ success: false, message: 'Menu item not found' });
+    }
+    res.json({ success: true, data: menuItem });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+module.exports = {
+  getAllMenuItems,
+  getMenuItemById,
+  getMenuItemsByCategory,
+  createMenuItem,
+  updateMenuItem,
+  deleteMenuItem,
+  toggleAvailability,
+  getInventory,
+  updateInventory,
+  getAllCategories,
+  createCategory
+};

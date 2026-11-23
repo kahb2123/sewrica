@@ -1,0 +1,1067 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+// NEW: Import Stripe hooks
+import { useStripe, useElements, CardElement } from '@stripe/react-stripe-js';
+import { 
+  FaShoppingCart, FaTrash, FaPlus, FaMinus, 
+  FaArrowLeft, FaArrowRight, FaCreditCard, 
+  FaMoneyBill, FaMobile, FaCheckCircle,
+  FaMapMarkerAlt, FaPhone, FaUser, FaEnvelope,
+  FaClock, FaUtensils, FaRegSmile
+} from 'react-icons/fa';
+import { MdDeliveryDining, MdRestaurantMenu } from 'react-icons/md';
+import { RiTakeawayLine } from 'react-icons/ri';
+import { toast } from 'react-toastify';
+import { orderService, UPLOADS_URL } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/useLanguage';
+import './Cart.css';
+
+const Cart = () => {
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { language, t } = useLanguage();
+  // NEW: Initialize Stripe hooks
+  const stripe = useStripe();
+  const elements = useElements();
+  // NEW: Add processing state for payments
+  const [processing, setProcessing] = useState(false);
+  const placingOrderRef = useRef(false);
+  
+  const [cartItems, setCartItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [checkoutStep, setCheckoutStep] = useState(1); // 1: cart, 2: checkout, 3: payment
+  const [customerInfo, setCustomerInfo] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    address: '',
+    city: 'Addis Ababa',
+    area: 'Megenagna',
+    building: 'Metebaber Building',
+    floor: '2nd Floor',
+    additionalInfo: '',
+    tableNumber: '',
+    deliveryMethod: 'delivery', // 'delivery' or 'pickup'
+    paymentMethod: 'cash', // 'cash', 'tele_birr', 'bank', 'card'
+    deliveryTime: 'asap'
+  });
+
+  const [formErrors, setFormErrors] = useState({});
+  // NEW: State for payment error
+  const [paymentError, setPaymentError] = useState('');
+
+  // ========== IMAGE FIX: Helper function to get correct image URL ==========
+  const getImageUrl = (imagePath) => {
+    if (!imagePath) {
+      return 'https://via.placeholder.com/100x100?text=No+Image';
+    }
+
+    // If it's already a full URL, return it
+    if (imagePath.startsWith('http')) {
+      return imagePath;
+    }
+
+    // If it's a relative path, prepend the uploads base URL
+    const cleanPath = imagePath.startsWith('/') ? imagePath.slice(1) : imagePath;
+    return `${UPLOADS_URL}/${cleanPath}`;
+  };
+  // ========== IMAGE FIX: Helper function to get emoji based on category ==========
+  const getCategoryEmoji = (category) => {
+    const emojis = {
+      'burgers': '🍔',
+      'sandwiches': '🥪',
+      'pizza': '🍕',
+      'wraps': '🌯',
+      'traditional': '🍛',
+      'fastfood': '🍟',
+      'beverages': '☕',
+      'desserts': '🍰',
+      'fetira': '🥙'
+    };
+    return emojis[category] || '🍽️';
+  };
+
+  // Load cart items from localStorage
+  useEffect(() => {
+    loadCartItems();
+  }, []);
+
+  // IMAGE FIX: Debug effect to check image paths
+  useEffect(() => {
+    if (cartItems.length > 0) {
+      console.log('Cart items with images:', cartItems.map(item => ({
+        name: item.name,
+        image: item.image,
+        category: item.category,
+        fullUrl: getImageUrl(item.image)
+      })));
+    }
+  }, [cartItems]);
+
+  // NEW: Update customer info when user changes
+  useEffect(() => {
+    if (user) {
+      setCustomerInfo(prev => ({
+        ...prev,
+        name: user.name || prev.name,
+        email: user.email || prev.email,
+        phone: user.phone || prev.phone
+      }));
+    }
+  }, [user]);
+
+  const loadCartItems = () => {
+    setLoading(true);
+    try {
+      const cart = JSON.parse(localStorage.getItem('cart')) || [];
+      setCartItems(cart);
+    } catch (error) {
+      console.error('Error loading cart:', error);
+      setCartItems([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Update quantity
+  const updateQuantity = (itemId, newQuantity) => {
+    if (newQuantity < 1) return;
+    
+    const updatedCart = cartItems.map(item =>
+      item.id === itemId ? { ...item, quantity: newQuantity } : item
+    );
+    
+    setCartItems(updatedCart);
+    localStorage.setItem('cart', JSON.stringify(updatedCart));
+    
+    window.dispatchEvent(new Event('cartUpdated'));
+  };
+
+  const removeItem = (itemId) => {
+    const updatedCart = cartItems.filter(item => item.id !== itemId);
+    setCartItems(updatedCart);
+    localStorage.setItem('cart', JSON.stringify(updatedCart));
+    window.dispatchEvent(new Event('cartUpdated'));
+  };
+
+  const clearCart = () => {
+    if (window.confirm('Are you sure you want to clear your cart?')) {
+      setCartItems([]);
+      localStorage.removeItem('cart');
+      window.dispatchEvent(new Event('cartUpdated'));
+    }
+  };
+
+  // Calculate subtotal
+  const calculateSubtotal = () => {
+    return cartItems.reduce((total, item) => total + (item.price * item.quantity), 0);
+  };
+
+  // Calculate total (same as subtotal since delivery is free)
+  const calculateTotal = () => {
+    return calculateSubtotal();
+  };
+
+  // Calculate item count
+  const getItemCount = () => {
+    return cartItems.reduce((count, item) => count + item.quantity, 0);
+  };
+
+  // Handle input change for customer info
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setCustomerInfo({
+      ...customerInfo,
+      [name]: value
+    });
+    
+    // Clear error for this field
+    if (formErrors[name]) {
+      setFormErrors({
+        ...formErrors,
+        [name]: null
+      });
+    }
+  };
+
+  // Validate checkout form
+  const validateCheckoutForm = () => {
+    const errors = {};
+    
+    if (customerInfo.deliveryMethod !== 'dine-in' && !customerInfo.name.trim()) {
+      errors.name = 'Name is required';
+    }
+
+    if (customerInfo.deliveryMethod === 'dine-in' && !customerInfo.tableNumber.trim()) {
+      errors.tableNumber = 'Table number is required';
+    }
+    
+    if (customerInfo.phone.trim() && !/^\+?[0-9]{10,15}$/.test(customerInfo.phone.replace(/\s/g, ''))) {
+      errors.phone = 'Invalid phone number';
+    }
+    
+    return errors;
+  };
+
+  // Proceed to checkout
+  const proceedToCheckout = () => {
+    if (cartItems.length === 0) {
+      toast.warning('Your cart is empty');
+      return;
+    }
+
+    setCheckoutStep(2);
+    window.scrollTo(0, 0);
+  };
+
+  // Proceed to payment
+  const proceedToPayment = () => {
+    const errors = validateCheckoutForm();
+    
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      toast.error('Please fill in all required information');
+      return;
+    }
+    
+    setCheckoutStep(3);
+    window.scrollTo(0, 0);
+  };
+
+  // Go back to cart
+  const backToCart = () => {
+    setCheckoutStep(1);
+    window.scrollTo(0, 0);
+  };
+
+  // Go back to checkout
+  const backToCheckout = () => {
+    setCheckoutStep(2);
+    window.scrollTo(0, 0);
+  };
+
+  // Handle card payment with Stripe
+  const handleCardPayment = async (orderId) => {
+    if (!stripe || !elements) {
+      throw new Error('Payment system not initialized');
+    }
+
+    try {
+      // Create payment intent
+      const paymentResponse = await orderService.createPaymentIntent(orderId);
+      
+      if (!paymentResponse.clientSecret) {
+        throw new Error('Failed to initialize payment');
+      }
+
+      // Get card element
+      const cardElement = elements.getElement(CardElement);
+      
+      if (!cardElement) {
+        throw new Error('Card information is required');
+      }
+
+      // Prepare billing details
+      const billingDetails = {
+        name: customerInfo.name,
+        email: customerInfo.email,
+        phone: customerInfo.phone,
+        address: {
+          line1: customerInfo.address || customerInfo.area,
+          city: customerInfo.city,
+          country: 'ET',
+        }
+      };
+
+      // Confirm payment with Stripe
+      const { error, paymentIntent } = await stripe.confirmCardPayment(
+        paymentResponse.clientSecret,
+        {
+          payment_method: {
+            card: cardElement,
+            billing_details: billingDetails
+          }
+        }
+      );
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (paymentIntent.status === 'succeeded') {
+        // Confirm order with backend
+        await orderService.confirmOrderPayment(orderId, paymentIntent.id);
+        
+        // Navigate to confirmation page
+        navigate(`/order-confirmation/${orderId}`);
+        
+        return paymentIntent;
+      } else {
+        throw new Error('Payment was not successful');
+      }
+    } catch (error) {
+      console.error('Card payment error:', error);
+      throw error;
+    }
+  };
+
+  // Handle Tele Birr payment
+  const handleTeleBirrPayment = (order) => {
+    // Clear cart
+    localStorage.removeItem('cart');
+    window.dispatchEvent(new Event('cartUpdated'));
+    navigate(`/order-confirmation/${order._id}`);
+  };
+
+  // Handle Bank Transfer payment
+  const handleBankPayment = (order) => {
+    // Clear cart
+    localStorage.removeItem('cart');
+    window.dispatchEvent(new Event('cartUpdated'));
+    navigate(`/order-confirmation/${order._id}`);
+  };
+
+  const handleCashPayment = (order) => {
+    localStorage.removeItem('cart');
+    window.dispatchEvent(new Event('cartUpdated'));
+    navigate(`/order-confirmation/${order._id}`);
+  };
+
+  // Place order function
+  const placeOrder = async () => {
+    if (placingOrderRef.current) return;
+
+    // Validate form for card payments
+    if (customerInfo.paymentMethod === 'card') {
+      if (!stripe || !elements) {
+        toast.error('Payment system not initialized. Please refresh the page.');
+        return;
+      }
+      
+      // Validate card element
+      const cardElement = elements.getElement(CardElement);
+      if (!cardElement) {
+        toast.error('Please enter your card details');
+        return;
+      }
+    }
+
+    try {
+      placingOrderRef.current = true;
+      setProcessing(true);
+      setPaymentError('');
+
+      // Prepare order data for backend
+      const orderData = {
+        items: cartItems.map(item => ({
+          menuItem: item.id,
+          quantity: item.quantity
+        })),
+        customerInfo: {
+          name: customerInfo.name,
+          email: customerInfo.email,
+          phone: customerInfo.phone,
+          address: customerInfo.address,
+          city: customerInfo.city,
+          area: customerInfo.area,
+          building: customerInfo.building,
+          floor: customerInfo.floor,
+          additionalInfo: customerInfo.additionalInfo,
+          tableNumber: customerInfo.tableNumber
+        },
+        paymentMethod: customerInfo.paymentMethod,
+        deliveryMethod: customerInfo.deliveryMethod,
+        deliveryTime: customerInfo.deliveryTime,
+        specialInstructions: customerInfo.additionalInfo || ''
+      };
+
+      console.log('Creating order with data:', orderData);
+
+      // Submit order to backend
+      const response = await orderService.createOrder(orderData);
+      console.log('Order created:', response);
+      
+      const order = response.order;
+      if (response.orderAccessToken) {
+        localStorage.setItem(`guestOrderAccess:${order._id}`, response.orderAccessToken);
+      }
+
+      // Handle payment based on method
+      switch (customerInfo.paymentMethod) {
+        case 'card':
+          try {
+            await handleCardPayment(order._id);
+          } catch (error) {
+            setPaymentError(error.message);
+            throw error;
+          }
+          break;
+          
+        case 'cash':
+          handleCashPayment(order);
+          break;
+          
+        case 'tele_birr':
+          handleTeleBirrPayment(order);
+          break;
+          
+        case 'bank':
+          handleBankPayment(order);
+          break;
+          
+        default:
+          toast.error('Invalid payment method');
+      }
+
+    } catch (error) {
+      console.error('Order placement error:', error);
+      toast.error(error.message || error.response?.data?.message || 'Failed to place order. Please try again.');
+    } finally {
+      placingOrderRef.current = false;
+      setProcessing(false);
+    }
+  };
+
+  // Render loading state
+  if (loading) {
+    return (
+      <div className="cart-page loading">
+        <div className="loader"></div>
+        <p>{t('Loading your cart...')}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cart-page">
+      <div className="container">
+        {/* Header */}
+        <div className="cart-header">
+          <h1 className="cart-title">
+            <FaShoppingCart /> {t('Your Cart')}
+          </h1>
+          <div className="cart-steps">
+            <div className={`step ${checkoutStep >= 1 ? 'active' : ''}`}>
+              <span className="step-number">1</span>
+              <span className="step-label">{t('Cart')}</span>
+            </div>
+            <div className={`step-line ${checkoutStep >= 2 ? 'active' : ''}`}></div>
+            <div className={`step ${checkoutStep >= 2 ? 'active' : ''}`}>
+              <span className="step-number">2</span>
+              <span className="step-label">{t('Checkout')}</span>
+            </div>
+            <div className={`step-line ${checkoutStep >= 3 ? 'active' : ''}`}></div>
+            <div className={`step ${checkoutStep >= 3 ? 'active' : ''}`}>
+              <span className="step-number">3</span>
+              <span className="step-label">{t('Payment')}</span>
+            </div>
+          </div>
+        </div>
+
+        {cartItems.length === 0 ? (
+          // Empty Cart
+          <div className="empty-cart">
+            <FaShoppingCart className="empty-cart-icon" />
+            <h2>{t('Your cart is empty')}</h2>
+            <p>{t("Looks like you haven't added any items to your cart yet.")}</p>
+            <div className="empty-cart-actions">
+              <Link to="/menu" className="btn-primary">
+                <MdRestaurantMenu /> {t('Browse Menu')}
+              </Link>
+              <Link to="/" className="btn-secondary">
+                <FaArrowLeft /> {t('Go Home')}
+              </Link>
+            </div>
+            <div className="popular-suggestions">
+              <h3>{t('Popular Items')}</h3>
+              <div className="suggestion-items">
+                <div className="suggestion-item" onClick={() => navigate('/menu')}>
+                  <FaUtensils /> Sewrica Burger
+                </div>
+                <div className="suggestion-item" onClick={() => navigate('/menu')}>
+                  <FaUtensils /> Beyaynet
+                </div>
+                <div className="suggestion-item" onClick={() => navigate('/menu')}>
+                  <FaUtensils /> Sewrica Pizza
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          // Cart with items
+          <div className="cart-content">
+            {checkoutStep === 1 && (
+              // Step 1: Cart Review
+              <div className="cart-grid">
+                <div className="cart-items">
+                  {!user && (
+                    <div className="order-step-banner">
+                      <strong>{t('Checkout as guest:')}</strong> {t('No account is required. We’ll use your contact details to confirm and track your order.')}
+                      <div className="step-banner-actions">
+                        <button type="button" className="secondary" onClick={() => navigate('/login?returnTo=/cart&mode=signup')}>{t('Create account instead')}</button>
+                      </div>
+                    </div>
+                  )}
+                  <h2>{t('Cart Items')} ({getItemCount()})</h2>
+                  {cartItems.map(item => (
+                    <div key={item.id} className="cart-item">
+                      {/* ========== IMAGE FIX: Updated image section with error handling ========== */}
+                      <div className="cart-item-image">
+                        {item.image ? (
+                          <img 
+                            src={getImageUrl(item.image)} 
+                            alt={language === 'am' ? item.nameAm || item.name : item.name}
+                            onError={(e) => {
+                              e.target.onerror = null;
+                              // Replace with emoji on error
+                              e.target.style.display = 'none';
+                              const parent = e.target.parentNode;
+                              const emojiSpan = document.createElement('span');
+                              emojiSpan.style.fontSize = '48px';
+                              emojiSpan.textContent = getCategoryEmoji(item.category);
+                              parent.appendChild(emojiSpan);
+                            }}
+                          />
+                        ) : (
+                          <div className="no-image">
+                            <span style={{ fontSize: '48px' }}>{getCategoryEmoji(item.category)}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="cart-item-details">
+                        <div className="cart-item-header">
+                          <h3 className="cart-item-name">
+                            {language === 'am' ? item.nameAm || item.name : item.name}
+                          </h3>
+                          {language !== 'am' && item.nameAm && (
+                            <p className="cart-item-name-am">{item.nameAm}</p>
+                          )}
+                        </div>
+                        <p className="cart-item-price">ETB {item.price}</p>
+                        <div className="cart-item-actions">
+                          <div className="quantity-control">
+                            <button 
+                              className="quantity-btn"
+                              onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                            >
+                              <FaMinus />
+                            </button>
+                            <span className="quantity-value">{item.quantity}</span>
+                            <button 
+                              className="quantity-btn"
+                              onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                            >
+                              <FaPlus />
+                            </button>
+                          </div>
+                          <button 
+                            className="remove-btn"
+                            onClick={() => removeItem(item.id)}
+                          >
+                            <FaTrash /> {t('Remove')}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="cart-item-total">
+                        <span>{t('Total:')}</span>
+                        <strong>ETB {(item.price * item.quantity).toFixed(2)}</strong>
+                      </div>
+                    </div>
+                  ))}
+                  
+                  <div className="cart-actions">
+                    <button onClick={clearCart} className="clear-cart-btn">
+                      <FaTrash /> {t('Clear Cart')}
+                    </button>
+                    <Link to="/menu" className="continue-shopping">
+                      <FaArrowLeft /> {t('Continue Shopping')}
+                    </Link>
+                  </div>
+                </div>
+
+                <div className="cart-summary">
+                  <h2>{t('Order Summary')}</h2>
+                  <div className="summary-details">
+                    <div className="summary-row">
+                      <span>{t('Subtotal')} ({getItemCount()} {t('items')})</span>
+                      <span>ETB {calculateSubtotal().toFixed(2)}</span>
+                    </div>
+                    <div className="summary-row">
+                      <span>{t('Delivery Fee')}</span>
+                      <span className="free-delivery">{t('FREE')}</span>
+                    </div>
+                    <div className="summary-row total">
+                      <span>{t('Total')}</span>
+                      <span>ETB {calculateTotal().toFixed(2)}</span>
+                    </div>
+                  </div>
+                  
+                  <div className="delivery-note">
+                    <FaClock className="note-icon" />
+                    <p>{t('Free delivery • Estimated time: 30-45 minutes')}</p>
+                  </div>
+                  
+                  <button 
+                    className="checkout-btn"
+                    onClick={proceedToCheckout}
+                  >
+                    Proceed to Checkout <FaArrowRight />
+                  </button>
+                  
+                  <div className="payment-methods-preview">
+                    <p>{t('We accept:')}</p>
+                    <div className="payment-icons">
+                      <span className="payment-icon">Cash</span>
+                      <span className="payment-icon">Tele Birr</span>
+                      <span className="payment-icon">Bank</span>
+                      <span className="payment-icon">Card</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {checkoutStep === 2 && (
+              // Step 2: Checkout Information
+              <div className="checkout-grid">
+                <div className="checkout-form">
+                  <div className="order-step-banner compact">
+                    <strong>{t('Step 2 of 3:')}</strong> {t('Confirm your delivery details before payment.')}
+                  </div>
+                  <h2>{t('Contact Information')}</h2>
+                  
+                  <div className="delivery-method">
+                    <label className={`method-option ${customerInfo.deliveryMethod === 'delivery' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="deliveryMethod"
+                        value="delivery"
+                        checked={customerInfo.deliveryMethod === 'delivery'}
+                        onChange={handleInputChange}
+                      />
+                      <MdDeliveryDining /> {t('Free Delivery')}
+                    </label>
+                    <label className={`method-option ${customerInfo.deliveryMethod === 'pickup' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="deliveryMethod"
+                        value="pickup"
+                        checked={customerInfo.deliveryMethod === 'pickup'}
+                        onChange={handleInputChange}
+                      />
+                      <RiTakeawayLine /> {t('Pickup')}
+                    </label>
+                    <label className={`method-option ${customerInfo.deliveryMethod === 'dine-in' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="deliveryMethod"
+                        value="dine-in"
+                        checked={customerInfo.deliveryMethod === 'dine-in'}
+                        onChange={handleInputChange}
+                      />
+                      <FaUtensils /> {t('Dine-in')}
+                    </label>
+                  </div>
+
+                  {customerInfo.deliveryMethod !== 'dine-in' && <div className="form-group">
+                    <label>
+                      <FaUser /> {t('Full Name *')}
+                    </label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={customerInfo.name}
+                      onChange={handleInputChange}
+                      className={formErrors.name ? 'error' : ''}
+                      placeholder={t('Enter your full name')}
+                    />
+                    {formErrors.name && <span className="error-message">{formErrors.name}</span>}
+                  </div>}
+
+                  {customerInfo.deliveryMethod === 'dine-in' && (
+                    <div className="form-group">
+                      <label>
+                        <FaUtensils /> {t('Table number *')}
+                      </label>
+                      <input
+                        type="text"
+                        name="tableNumber"
+                        value={customerInfo.tableNumber}
+                        onChange={handleInputChange}
+                        className={formErrors.tableNumber ? 'error' : ''}
+                        placeholder={t('Enter your table number')}
+                        required
+                      />
+                      {formErrors.tableNumber && <span className="error-message">{formErrors.tableNumber}</span>}
+                    </div>
+                  )}
+
+                  <div className="form-group">
+                    <label>
+                      <FaPhone /> {t('Phone Number')}
+                    </label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={customerInfo.phone}
+                      onChange={handleInputChange}
+                      className={formErrors.phone ? 'error' : ''}
+                      placeholder="+251 911 234 567"
+                    />
+                    {formErrors.phone && <span className="error-message">{formErrors.phone}</span>}
+                  </div>
+
+                  <div className="form-group">
+                    <label>
+                      <FaEnvelope /> {t('Email Address')}
+                    </label>
+                    <input
+                      type="email"
+                      name="email"
+                      value={customerInfo.email}
+                      onChange={handleInputChange}
+                      className={formErrors.email ? 'error' : ''}
+                      placeholder="your@email.com"
+                    />
+                    {formErrors.email && <span className="error-message">{formErrors.email}</span>}
+                  </div>
+
+                  {customerInfo.deliveryMethod === 'delivery' && (
+                    <>
+                      <h2 style={{ marginTop: '30px' }}>{t('Delivery Address')}</h2>
+                      
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>{t('Area')}</label>
+                          <input
+                            type="text"
+                            name="area"
+                            value={customerInfo.area}
+                            onChange={handleInputChange}
+                            placeholder="e.g., Megenagna"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>{t('Building')}</label>
+                          <input
+                            type="text"
+                            name="building"
+                            value={customerInfo.building}
+                            onChange={handleInputChange}
+                            placeholder={t('Building name')}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="form-row">
+                        <div className="form-group">
+                          <label>{t('Floor/Office')}</label>
+                          <input
+                            type="text"
+                            name="floor"
+                            value={customerInfo.floor}
+                            onChange={handleInputChange}
+                            placeholder="e.g., 2nd Floor"
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label>{t('City')}</label>
+                          <input
+                            type="text"
+                            name="city"
+                            value={customerInfo.city}
+                            onChange={handleInputChange}
+                            placeholder={t('Addis Ababa')}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="form-group">
+                        <label>{t('Additional Information')}</label>
+                        <textarea
+                          name="additionalInfo"
+                          value={customerInfo.additionalInfo}
+                          onChange={handleInputChange}
+                          placeholder={t('Landmarks, gate number, special instructions...')}
+                          rows="3"
+                        ></textarea>
+                      </div>
+                    </>
+                  )}
+
+                  {customerInfo.deliveryMethod === 'pickup' && (
+                    <div className="pickup-info">
+                      <h3>{t('Pickup Location')}</h3>
+                      <p>
+                        <FaMapMarkerAlt /> {t('Megenagna, Metebaber Building, 2nd Floor')}
+                      </p>
+                      <p>{t('Please bring your ID when picking up your order.')}</p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="checkout-summary">
+                  <h2>{t('Order Summary')}</h2>
+                  <div className="checkout-items">
+                    {cartItems.map(item => (
+                      <div key={item.id} className="checkout-item">
+                        <span className="checkout-item-name">
+                          {language === 'am' ? item.nameAm || item.name : item.name} x{item.quantity}
+                        </span>
+                        <span className="checkout-item-price">
+                          ETB {(item.price * item.quantity).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="summary-details">
+                    <div className="summary-row">
+                      <span>Subtotal</span>
+                      <span>ETB {calculateSubtotal().toFixed(2)}</span>
+                    </div>
+                    <div className="summary-row">
+                      <span>Delivery Fee</span>
+                      <span className="free-delivery">FREE</span>
+                    </div>
+                    <div className="summary-row total">
+                      <span>Total</span>
+                      <span>ETB {calculateTotal().toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  <div className="checkout-actions">
+                    <button onClick={backToCart} className="back-btn">
+                      <FaArrowLeft /> Back to Cart
+                    </button>
+                    <button onClick={proceedToPayment} className="continue-btn">
+                      Continue to Payment <FaArrowRight />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {checkoutStep === 3 && (
+              // Step 3: Payment
+              <div className="payment-grid">
+                <div className="payment-methods">
+                  <div className="order-step-banner compact">
+                    <strong>Step 3 of 3:</strong> Choose your payment method and confirm your order.
+                  </div>
+                  <h2>Payment Method</h2>
+                  
+                  <div className="payment-options">
+                    <label className={`payment-option ${customerInfo.paymentMethod === 'cash' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value="cash"
+                        checked={customerInfo.paymentMethod === 'cash'}
+                        onChange={handleInputChange}
+                      />
+                      <FaMoneyBill className="payment-icon" />
+                      <div className="payment-info">
+                        <strong>Cash on Delivery</strong>
+                        <small>Pay when you receive your order</small>
+                      </div>
+                    </label>
+
+                    <label className={`payment-option ${customerInfo.paymentMethod === 'card' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value="card"
+                        checked={customerInfo.paymentMethod === 'card'}
+                        onChange={handleInputChange}
+                      />
+                      <FaCreditCard className="payment-icon" />
+                      <div className="payment-info">
+                        <strong>Credit / Debit Card</strong>
+                        <small>Pay securely with Stripe</small>
+                      </div>
+                    </label>
+
+                    <label className={`payment-option ${customerInfo.paymentMethod === 'tele_birr' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value="tele_birr"
+                        checked={customerInfo.paymentMethod === 'tele_birr'}
+                        onChange={handleInputChange}
+                      />
+                      <FaMobile className="payment-icon" />
+                      <div className="payment-info">
+                        <strong>Tele Birr</strong>
+                        <small>Pay using Tele Birr mobile money</small>
+                      </div>
+                    </label>
+
+                    <label className={`payment-option ${customerInfo.paymentMethod === 'bank' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value="bank"
+                        checked={customerInfo.paymentMethod === 'bank'}
+                        onChange={handleInputChange}
+                      />
+                      <FaCreditCard className="payment-icon" />
+                      <div className="payment-info">
+                        <strong>Bank Transfer</strong>
+                        <small>Transfer to our business account</small>
+                      </div>
+                    </label>
+                  </div>
+
+                  {/* ========== NEW: Card Payment Section ========== */}
+                  {customerInfo.paymentMethod === 'card' && (
+                    <div className="card-payment-section">
+                      <h3>{t('Card Details')}</h3>
+                      <div className="card-element-container">
+                        <CardElement 
+                          options={{
+                            style: {
+                              base: {
+                                fontSize: '16px',
+                                color: '#424770',
+                                '::placeholder': {
+                                  color: '#aab7c4',
+                                },
+                              },
+                              invalid: {
+                                color: '#9e2146',
+                              },
+                            },
+                          }}
+                        />
+                      </div>
+                      
+                      {/* Test card hint */}
+                      <div className="test-card-hint">
+                        <p>{t('Test Card: 4242 4242 4242 4242 | Any future date | Any CVC')}</p>
+                      </div>
+
+                      {/* Payment error display */}
+                      {paymentError && (
+                        <div className="payment-error-message">
+                          <p>{paymentError}</p>
+                        </div>
+                      )}
+
+                      <p className="secure-note">
+                        🔒 {t('Your payment information is secure and encrypted by Stripe')}
+                      </p>
+                    </div>
+                  )}
+
+                  {customerInfo.paymentMethod === 'tele_birr' && (
+                    <div className="payment-instructions">
+                      <h3>{t('Tele Birr Payment Instructions:')}</h3>
+                      <ol>
+                        <li>{t('Dial *127# on your mobile')}</li>
+                        <li>{t('Select "Payment"')}</li>
+                        <li>{t('Enter business number:')} <strong>+251911234567</strong></li>
+                        <li>{t('Enter amount:')} <strong>ETB {calculateTotal().toFixed(2)}</strong></li>
+                        <li>{t('Enter your PIN to confirm')}</li>
+                        <li>{t("You'll receive a confirmation SMS")}</li>
+                      </ol>
+                      <p className="note">{t("After payment, we'll confirm your order via SMS")}</p>
+                    </div>
+                  )}
+
+                  {customerInfo.paymentMethod === 'bank' && (
+                    <div className="payment-instructions">
+                      <h3>{t('Bank Transfer Details:')}</h3>
+                      <p><strong>{t('Bank:')}</strong> Commercial Bank of Ethiopia</p>
+                      <p><strong>{t('Account Name:')}</strong> SEWRICA Cafe</p>
+                      <p><strong>{t('Account Number:')}</strong> 1000123456789</p>
+                      <p><strong>{t('Amount:')}</strong> ETB {calculateTotal().toFixed(2)}</p>
+                      <p className="note">{t('Please include your order number as reference')}</p>
+                    </div>
+                  )}
+
+                  <div className="order-review">
+                    <h3>{t('Review Your Order')}</h3>
+                    <div className="review-items">
+                      {cartItems.map(item => (
+                        <div key={item.id} className="review-item">
+                          <span>{language === 'am' ? item.nameAm || item.name : item.name} x{item.quantity}</span>
+                          <span>ETB {(item.price * item.quantity).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="review-total">
+                      <span>{t('Total:')}</span>
+                      <strong>ETB {calculateTotal().toFixed(2)}</strong>
+                    </div>
+                  </div>
+
+                  <div className="payment-actions">
+                    <button onClick={backToCheckout} className="back-btn">
+                      <FaArrowLeft /> {t('Back')}
+                    </button>
+                    <button 
+                      onClick={placeOrder} 
+                      className={`place-order-btn ${processing ? 'processing' : ''}`}
+                      disabled={processing || (customerInfo.paymentMethod === 'card' && !stripe)}
+                    >
+                      {processing ? (
+                        <>
+                          <span className="spinner"></span>
+                          {t('Processing...')}
+                        </>
+                      ) : (
+                        <>
+                          {t('Place Order')} <FaRegSmile />
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="payment-summary">
+                  <h2>{t('Delivery Information')}</h2>
+                  <div className="info-card">
+                    <p><strong>{t('Name')}:</strong> {customerInfo.name}</p>
+                    <p><strong>{t('Phone')}:</strong> {customerInfo.phone}</p>
+                    <p><strong>{t('Email')}:</strong> {customerInfo.email}</p>
+                    {customerInfo.deliveryMethod === 'delivery' ? (
+                      <>
+                        <p><strong>{t('Address')}:</strong> {customerInfo.area}, {customerInfo.building}, {customerInfo.floor}</p>
+                        {customerInfo.additionalInfo && (
+                          <p><strong>{t('Note:')}</strong> {customerInfo.additionalInfo}</p>
+                        )}
+                      </>
+                    ) : customerInfo.deliveryMethod === 'dine-in' ? (
+                      <p><strong>{t('Table number')}:</strong> {customerInfo.tableNumber}</p>
+                    ) : (
+                      <p><strong>{t('Pickup')}:</strong> {t('Megenagna, Metebaber Building, 2nd Floor')}</p>
+                    )}
+                  </div>
+
+                  <h2 style={{ marginTop: '20px' }}>{t('Estimated Time')}</h2>
+                  <div className="time-card">
+                    <FaClock className="time-icon" />
+                    <div>
+                      <p><strong>{t('Preparation:')}</strong> 10-15 {t('minutes')}</p>
+                      <p><strong>{t('Delivery:')}</strong> 5-10 {t('minutes')}</p>
+                      <p><strong>{t('Total:')}</strong> 15-25 {t('minutes')}</p>
+                    </div>
+                  </div>
+
+                  <div className="guarantee">
+                    <FaCheckCircle className="guarantee-icon" />
+                    <p>{t("Free delivery • Your satisfaction is guaranteed. If you're not happy with your order, let us know!")}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default Cart;

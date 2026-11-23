@@ -1,0 +1,340 @@
+import React, { useState } from 'react';
+import { toast } from 'react-toastify';
+import { PERMISSIONS, PAGE_ACCESS, adminService } from '../services/api';
+import './AddStaffModal.css';
+
+const PAGE_ACCESS_LABELS = {
+  staffOrdersCooking: 'Kitchen Display',
+  staffOrderEntry: 'Staff Order Entry',
+  adminIngredients: 'Ingredients',
+  adminExpenses: 'Expenses',
+  adminReports: 'Reports',
+};
+
+// Get the API base URL from environment or use default
+const API_URL = import.meta.env.VITE_API_URL || 'https://sewrica-cafe-backend.onrender.com/api';
+
+const AddStaffModal = ({ isOpen, onClose, onStaffAdded, editMode = false, staffData = null }) => {
+  const [formData, setFormData] = useState(editMode && staffData ? {
+    name: staffData.name || '',
+    email: staffData.email || '',
+    phone: staffData.phone || '',
+    password: '',
+    confirmPassword: '',
+    role: staffData.role || 'cook',
+    pageAccessOverrides: staffData.pageAccessOverrides || {},
+    extraPermissions: staffData.extraPermissions || [],
+    deniedPermissions: staffData.deniedPermissions || []
+  } : {
+    name: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: '',
+    role: 'cook',
+    pageAccessOverrides: {}
+  });
+  const [loading, setLoading] = useState(false);
+
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    // Validation
+    const isCreateMode = !editMode;
+    if (!formData.name || !formData.email || !formData.phone) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+
+    if (isCreateMode) {
+      if (!formData.password) {
+        toast.error('Password is required for new staff');
+        return;
+      }
+      if (formData.password !== formData.confirmPassword) {
+        toast.error('Passwords do not match');
+        return;
+      }
+      if (formData.password.length < 6) {
+        toast.error('Password must be at least 6 characters');
+        return;
+      }
+    }
+
+    // Validate phone number (Ethiopian format - simple check)
+    const phoneRegex = /^[0-9]{10}$/;
+    if (!phoneRegex.test(formData.phone)) {
+      toast.error('Please enter a valid 10-digit phone number');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = sessionStorage.getItem('token');
+      
+      if (!token) {
+        toast.error('You must be logged in as admin');
+        return;
+      }
+
+      const payload = {
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        role: formData.role,
+        pageAccessOverrides: formData.pageAccessOverrides,
+        extraPermissions: formData.extraPermissions || [],
+        deniedPermissions: formData.deniedPermissions || []
+      };
+
+      if (formData.password) {
+        payload.password = formData.password;
+      }
+
+      if (editMode) {
+        await adminService.updateStaffPermissions(staffData._id, {
+          extraPermissions: payload.extraPermissions,
+          deniedPermissions: payload.deniedPermissions,
+          pageAccessOverrides: payload.pageAccessOverrides
+        });
+        toast.success(`Permissions updated for ${formData.name}`);
+      } else {
+        console.log('Sending request to:', `${API_URL}/admin/staff`);
+        console.log('Request payload:', payload);
+
+        const response = await fetch(`${API_URL}/admin/staff`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify(payload)
+        });
+
+        // Check if response is OK before parsing JSON
+        let data = {};
+        const contentType = response.headers.get('content-type');
+        
+        if (contentType && contentType.includes('application/json')) {
+          const text = await response.text();
+          data = text ? JSON.parse(text) : {};
+        }
+        
+        if (response.ok) {
+          toast.success(`${formData.role} added successfully!`);
+        } else {
+          const errorMessage = data.message || data.error || `Failed to add ${formData.role}`;
+          toast.error(errorMessage);
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Call the callback to refresh staff list
+      if (onStaffAdded) {
+        onStaffAdded(editMode ? undefined : formData.role);
+      }
+      
+      // Close modal
+      onClose();
+    } catch (error) {
+      console.error('Error adding staff:', error);
+      toast.error(error.response?.data?.message || 'Network error - please check your connection and try again');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content add-staff-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>{editMode ? 'Edit Staff Member' : 'Add New Staff Member'}</h2>
+          <button className="modal-close-btn" onClick={onClose}>×</button>
+        </div>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Full Name *</label>
+            <input
+              type="text"
+              name="name"
+              value={formData.name}
+              onChange={handleChange}
+              required
+              placeholder="Enter full name"
+              disabled={loading}
+              autoFocus
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Email Address *</label>
+            <input
+              type="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              required
+              placeholder="Enter email address"
+              disabled={loading}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Phone Number *</label>
+            <input
+              type="tel"
+              name="phone"
+              value={formData.phone}
+              onChange={handleChange}
+              required
+              placeholder="0912345678"
+              pattern="[0-9]{10}"
+              title="Please enter a valid 10-digit phone number"
+              disabled={loading}
+            />
+            <small className="field-note">Enter 10-digit phone number (e.g., 0912345678)</small>
+          </div>
+
+          <div className="form-group">
+            <label>Role *</label>
+            <select
+              name="role"
+              value={formData.role}
+              onChange={handleChange}
+              required
+              disabled={loading}
+            >
+              <option value="cook">👨‍🍳 Chef / Cook</option>
+              <option value="delivery">🚚 Delivery Person</option>
+              <option value="waiter">🧑‍🍽️ Waiter</option>
+              <option value="cashier">💰 Cashier</option>
+              <option value="supply_chain">📦 Supply Chain</option>
+              <option value="admin">👑 Admin</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label>Page Access</label>
+            <div className="page-access-section">
+              <p className="page-access-note">Override default role permissions for individual pages</p>
+              {Object.keys(PAGE_ACCESS).map(page => {
+                const currentOverride = formData.pageAccessOverrides[page];
+                const currentValue = currentOverride
+                  ? (currentOverride.canWrite ? 'write' : currentOverride.canRead ? 'read' : 'none')
+                  : 'inherit';
+
+                return (
+                  <div key={page} className="page-access-row">
+                    <span className="page-name">{PAGE_ACCESS_LABELS[page] || page}</span>
+                    <select
+                      value={currentValue}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        const newOverrides = { ...formData.pageAccessOverrides };
+                        if (value === 'inherit') {
+                          delete newOverrides[page];
+                        } else {
+                          newOverrides[page] = {
+                            canRead: value === 'read' || value === 'write',
+                            canWrite: value === 'write',
+                          };
+                        }
+                        setFormData({ ...formData, pageAccessOverrides: newOverrides });
+                      }}
+                      disabled={loading}
+                    >
+                      <option value="inherit">Inherit from Role</option>
+                      <option value="read">Read Only</option>
+                      <option value="write">Read & Write</option>
+                      <option value="none">No Access</option>
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Password *</label>
+              <input
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleChange}
+                required
+                placeholder="Minimum 6 characters"
+                minLength="6"
+                disabled={loading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label>Confirm Password *</label>
+              <input
+                type="password"
+                name="confirmPassword"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                required
+                placeholder="Re-enter password"
+                minLength="6"
+                disabled={loading}
+              />
+            </div>
+          </div>
+
+          <div className="form-group password-requirements">
+            <p>Password requirements:</p>
+            <ul>
+              <li className={formData.password.length >= 6 ? 'valid' : ''}>
+                ✓ At least 6 characters
+              </li>
+              <li className={formData.password === formData.confirmPassword && formData.password !== '' ? 'valid' : ''}>
+                ✓ Passwords match
+              </li>
+            </ul>
+          </div>
+
+          <div className="modal-actions">
+            <button 
+              type="submit" 
+              className="btn-save"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <span className="spinner"></span>
+                  {editMode ? 'Saving...' : 'Adding...'}
+                </>
+              ) : (
+                editMode ? 'Update Permissions' : 'Add Staff Member'
+              )}
+            </button>
+            <button 
+              type="button" 
+              className="btn-cancel"
+              onClick={onClose}
+              disabled={loading}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default AddStaffModal;

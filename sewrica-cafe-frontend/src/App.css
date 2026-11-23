@@ -1,0 +1,120 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+.App {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.main-content {
+  flex: 1;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--sewrica-cream);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--gradient-gold);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--sewrica-gold);
+}
+
+/* Toast customization */
+.Toastify__toast {
+  border-radius: 10px !important;
+  font-family: 'Poppins', sans-serif !important;
+}
+
+.Toastify__toast--success {
+  background: var(--gradient-primary) !important;
+}
+
+.Toastify__toast--error {
+  background: linear-gradient(135deg, #a83d32, #7d2924) !important;
+}
+
+.Toastify__toast--info {
+  background: var(--gradient-dark) !important;
+}
+
+.Toastify__toast--warning {
+  background: var(--gradient-gold) !important;
+}
+
+/* Loading animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.page-enter {
+  animation: fadeIn 0.5s ease forwards;
+}
+
+/* Shared bounds keep every page inside the viewport on narrow screens. */
+img,
+video,
+canvas {
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  max-width: 100%;
+}
+
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .Toastify__toast-container {
+    width: calc(100vw - 24px);
+    left: 12px;
+    right: 12px;
+    top: 12px;
+  }
+
+  .Toastify__toast {
+    margin-bottom: 8px;
+    min-height: 48px;
+  }
+
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-content {
+    width: min(100%, 520px);
+    max-height: calc(100vh - 24px);
+  }
+}

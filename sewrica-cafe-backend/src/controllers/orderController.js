@@ -1,0 +1,1136 @@
+// src/controllers/orderController.js
+const crypto = require('crypto');
+const { isValidObjectId } = require('../utils/ids');
+const Order = require('../models/Order');
+const Counter = require('../models/Counter');
+const stripe = require('../config/stripe');
+const User = require('../models/User');
+const MenuItem = require('../models/MenuItem');
+const LotteryService = require('../services/lotteryService');
+const {
+  createGuestAccessToken,
+  hashGuestAccessToken,
+  guestTokenMatches
+} = require('../utils/orderAccess');
+
+// @desc    Create new order
+// @route   POST /api/orders
+// @access  Private (authenticated users)
+const createOrder = async (req, res) => {
+  try {
+    const {
+      items,
+      customerInfo,
+      paymentMethod,
+      deliveryMethod,
+      deliveryTime,
+      specialInstructions
+    } = req.body;
+
+    // Validate required fields
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Order must contain at least one item' });
+    }
+
+    if (!customerInfo || (!customerInfo.name && deliveryMethod !== 'dine-in')) {
+      return res.status(400).json({ message: 'Customer information is required' });
+    }
+
+    if (!paymentMethod || !deliveryMethod) {
+      return res.status(400).json({ message: 'Payment method and delivery method are required' });
+    }
+    if (!['delivery', 'pickup', 'dine-in'].includes(deliveryMethod)) {
+      return res.status(400).json({ message: 'Select a valid order type' });
+    }
+    const tableNumber = typeof customerInfo.tableNumber === 'string'
+      ? customerInfo.tableNumber.trim()
+      : '';
+    if (deliveryMethod === 'dine-in' && !tableNumber) {
+      return res.status(400).json({ message: 'Table number is required for dine-in orders' });
+    }
+
+    // A signed-in customer is attached by optionalProtect; guest checkout is also allowed.
+    const user = req.user;
+    const guestAccessToken = user ? null : createGuestAccessToken();
+
+    // Validate and calculate order items
+    let subtotal = 0;
+    const orderItems = [];
+    const requestedQuantities = new Map();
+
+    for (const item of items) {
+      const quantity = Number(item.quantity);
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        return res.status(400).json({ message: 'Each item quantity must be a whole number greater than 0' });
+      }
+      const itemId = String(item.menuItem);
+      requestedQuantities.set(itemId, (requestedQuantities.get(itemId) || 0) + quantity);
+    }
+
+    const menuItems = new Map();
+    for (const [itemId, quantity] of requestedQuantities) {
+      const menuItem = await MenuItem.findById(itemId);
+      if (!menuItem) {
+        return res.status(400).json({ message: `Menu item ${itemId} not found` });
+      }
+      if (!menuItem.isAvailable) {
+        return res.status(400).json({ message: `${menuItem.name} does not have enough stock` });
+      }
+      menuItems.set(itemId, menuItem);
+    }
+
+    for (const item of items) {
+      const menuItem = menuItems.get(String(item.menuItem));
+
+      const itemTotal = menuItem.price * item.quantity;
+      subtotal += itemTotal;
+
+      orderItems.push({
+        menuItem: menuItem._id,
+        name: menuItem.name,
+        category: menuItem.category || 'other',
+        quantity: Number(item.quantity),
+        price: menuItem.price
+      });
+    }
+
+    const totalAmount = subtotal;
+
+    const paymentStatus = 'pending';
+
+    // ========== GENERATE LOTTERY TICKET NUMBER ==========
+    const lotteryTicketNumber = LotteryService.generateTicketNumber();
+
+    // Create order with initial status, retrying if the 5-digit number is already taken
+    let order;
+    let currentOrderNumber;
+    const orderDate = new Date();
+    const { orderDateKey, dailyOrderNumber } = await generateDailyOrderNumber(orderDate);
+    for (let attempt = 0; attempt < ORDER_NUMBER_MAX_ATTEMPTS; attempt++) {
+      try {
+        currentOrderNumber = await generateOrderNumber();
+        order = await Order.create({
+          orderNumber: currentOrderNumber,
+        dailyOrderNumber,
+        orderDateKey,
+        createdAt: orderDate,
+        customer: user?._id || null,
+        guestAccessTokenHash: guestAccessToken
+          ? hashGuestAccessToken(guestAccessToken)
+          : undefined,
+        customerName: customerInfo.name || user?.name || 'Dine-in customer',
+        customerPhone: customerInfo.phone || '',
+        customerEmail: customerInfo.email || user?.email || '',
+        tableNumber: deliveryMethod === 'dine-in' ? tableNumber : '',
+        items: orderItems,
+        subtotal,
+        totalAmount,
+        paymentMethod,
+        paymentStatus,
+        deliveryMethod,
+        deliveryAddress: deliveryMethod === 'delivery' ? {
+          street: customerInfo.address || customerInfo.area || '',
+          area: customerInfo.area || '',
+          building: customerInfo.building || '',
+          floor: customerInfo.floor || '',
+          city: customerInfo.city || '',
+          additionalInfo: customerInfo.additionalInfo || ''
+        } : undefined,
+        deliveryTime: deliveryTime || 'asap',
+        specialRequests: specialInstructions || '',
+        status: 'pending',
+        stripePaymentIntentId: null,
+        amountReceived: null,
+        change: null,
+        paidAt: null,
+        lotteryTicketNumber, // Add lottery ticket
+        lotteryEligible: true,
+        // Initialize status history
+        statusHistory: [{
+          status: 'pending',
+          changedBy: user?._id,
+          changedAt: new Date(),
+          notes: `Order placed - Lottery Ticket: ${lotteryTicketNumber}`
+        }]
+        });
+        break;
+      } catch (error) {
+        const isDuplicateOrderNumber =
+          error && error.code === 11000 && error.keyPattern && error.keyPattern.orderNumber;
+        if (!isDuplicateOrderNumber || attempt === ORDER_NUMBER_MAX_ATTEMPTS - 1) {
+          throw error;
+        }
+        console.warn(`Order number collision, retrying (attempt ${attempt + 2}/${ORDER_NUMBER_MAX_ATTEMPTS})`);
+      }
+    }
+
+    await order.populate('items.menuItem');
+
+    // ========== SOCKET.IO: Notify admin of new order ==========
+    const io = req.app.get('io');
+    if (io) {
+      // Notify all admin/staff rooms about new order
+      io.to('staff-admin').to('staff-cashier').emit('new-order', {
+        orderId: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        customerName: order.customerName,
+        totalAmount: order.totalAmount,
+        createdAt: order.createdAt,
+        lotteryTicketNumber: order.lotteryTicketNumber // Include lottery ticket
+      });
+      console.log(`📢 New order notification sent for order #${order.dailyOrderNumber || order.orderNumber} with lottery ticket ${lotteryTicketNumber}`);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Order created successfully',
+      order: {
+        _id: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        items: order.items,
+        subtotal: order.subtotal,
+        totalAmount: order.totalAmount,
+        status: order.status,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        createdAt: order.createdAt,
+        lotteryTicketNumber: order.lotteryTicketNumber
+      },
+      ...(guestAccessToken && { orderAccessToken: guestAccessToken })
+    });
+
+  } catch (error) {
+    console.error('Create order error:', error);
+    res.status(500).json({ message: 'Failed to create order', error: error.message });
+  }
+};
+
+const createStaffOrder = async (req, res) => {
+  try {
+    const { items, paymentMethod, deliveryMethod, orderName: submittedOrderName, customerInfo = {}, deliveryAddress = {}, tableNumber: submittedTableNumber } = req.body;
+    const validPaymentMethods = ['cash', 'card', 'tele_birr', 'bank'];
+    const customerDetails = customerInfo && typeof customerInfo === 'object' ? customerInfo : {};
+    const addressDetails = deliveryAddress && typeof deliveryAddress === 'object' ? deliveryAddress : {};
+    const customerName = typeof customerDetails.name === 'string' ? customerDetails.name.trim() : '';
+    const orderName = typeof submittedOrderName === 'string'
+      ? submittedOrderName.trim()
+      : customerName;
+    const customerPhone = typeof customerDetails.phone === 'string' ? customerDetails.phone.trim() : '';
+    const tableNumberValue = submittedTableNumber ?? customerDetails.tableNumber;
+    const tableNumber = typeof tableNumberValue === 'string' ? tableNumberValue.trim() : '';
+    const street = typeof addressDetails.street === 'string' ? addressDetails.street.trim() : '';
+    const area = typeof addressDetails.area === 'string' ? addressDetails.area.trim() : '';
+    const city = typeof addressDetails.city === 'string' ? addressDetails.city.trim() : '';
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ message: 'Order must contain at least one item' });
+    }
+    if (!validPaymentMethods.includes(paymentMethod)) {
+      return res.status(400).json({ message: 'Select a valid payment method' });
+    }
+    if (!['delivery', 'pickup', 'dine-in'].includes(deliveryMethod)) {
+      return res.status(400).json({ message: 'Select a valid order type' });
+    }
+    if (deliveryMethod === 'dine-in' && !tableNumber) {
+      return res.status(400).json({ message: 'Table number is required for dine-in orders' });
+    }
+    if (deliveryMethod === 'delivery' && !street) {
+      return res.status(400).json({ message: 'Delivery address is required for delivery orders' });
+    }
+
+    const requestedQuantities = new Map();
+    for (const item of items) {
+      if (!item || typeof item !== 'object') {
+        return res.status(400).json({ message: 'Order contains an invalid menu item' });
+      }
+      const quantity = Number(item.quantity);
+      const itemId = String(item.menuItem || '');
+      if (!isValidObjectId(itemId)) {
+        return res.status(400).json({ message: 'Order contains an invalid menu item' });
+      }
+      if (!Number.isInteger(quantity) || quantity < 1) {
+        return res.status(400).json({ message: 'Each item quantity must be a whole number greater than 0' });
+      }
+      requestedQuantities.set(itemId, (requestedQuantities.get(itemId) || 0) + quantity);
+    }
+
+    const menuItems = new Map();
+    for (const itemId of requestedQuantities.keys()) {
+      const menuItem = await MenuItem.findById(itemId);
+      if (!menuItem || !menuItem.isAvailable) {
+        return res.status(400).json({ message: 'One or more selected items are unavailable' });
+      }
+      menuItems.set(itemId, menuItem);
+    }
+
+    const orderItems = [];
+    let subtotal = 0;
+    for (const [itemId, quantity] of requestedQuantities) {
+      const menuItem = menuItems.get(itemId);
+      subtotal += menuItem.price * quantity;
+      orderItems.push({
+        menuItem: menuItem._id,
+        name: menuItem.name,
+        category: menuItem.category || 'other',
+        quantity,
+        price: menuItem.price
+      });
+    }
+
+    const now = new Date();
+    let order;
+    const { orderDateKey, dailyOrderNumber } = await generateDailyOrderNumber(now);
+    for (let attempt = 0; attempt < ORDER_NUMBER_MAX_ATTEMPTS; attempt++) {
+      try {
+        const orderNumber = await generateOrderNumber();
+        order = await Order.create({
+          orderNumber,
+          dailyOrderNumber,
+          orderDateKey,
+          createdAt: now,
+          customer: null,
+          createdBy: req.user._id,
+          orderName,
+          customerName: orderName || customerName || (deliveryMethod === 'dine-in' ? 'Dine-in customer' : 'Guest'),
+          customerPhone,
+          customerEmail: '',
+          tableNumber: deliveryMethod === 'dine-in' ? tableNumber : '',
+          items: orderItems,
+          subtotal,
+          totalAmount: subtotal,
+          paymentMethod,
+          paymentStatus: 'completed',
+          deliveryMethod,
+          deliveryTime: 'asap',
+          deliveryAddress: deliveryMethod === 'delivery' ? { street, area, city } : undefined,
+          status: 'pending',
+          orderSource: 'walk-in',
+          processedBy: req.user._id,
+          processedByName: req.user.name || '',
+          processedAt: now,
+          paidAt: now,
+          lotteryTicketNumber: `staff-${crypto.randomUUID()}`,
+          amountReceived: paymentMethod === 'cash' ? subtotal : undefined,
+          change: paymentMethod === 'cash' ? 0 : undefined,
+          assignedDelivery: null,
+          lotteryEligible: false,
+          statusHistory: [{
+            status: 'pending',
+            changedBy: req.user._id,
+            changedAt: now,
+            notes: `In-cafe order placed and paid by ${req.user.name || req.user.role}`
+          }]
+        });
+        break;
+      } catch (error) {
+        const duplicateOrderNumber =
+          error?.code === 11000 && error.keyPattern?.orderNumber;
+        if (!duplicateOrderNumber || attempt === ORDER_NUMBER_MAX_ATTEMPTS - 1) {
+          throw error;
+        }
+      }
+    }
+
+    const io = req.app.get('io');
+    if (io) {
+      io.to('staff-admin').to('staff-cashier').to('staff-cook').emit('new-order', {
+        orderId: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        customerName: order.orderName || order.customerName,
+        orderName: order.orderName,
+        totalAmount: order.totalAmount,
+        createdAt: order.createdAt,
+        paymentStatus: order.paymentStatus,
+        orderSource: order.orderSource
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: 'Order placed and marked as paid',
+      order: {
+        _id: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        items: order.items,
+        subtotal: order.subtotal,
+        totalAmount: order.totalAmount,
+        status: order.status,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.paymentStatus,
+        orderName: order.orderName,
+        createdAt: order.createdAt
+      }
+    });
+  } catch (error) {
+    console.error('Create staff order error:', error.stack || error);
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({ message: error.message });
+    }
+    if (error.code === 11000) {
+      return res.status(409).json({ message: 'Order could not be saved because of a duplicate value. Please retry.' });
+    }
+    return res.status(500).json({ message: 'Failed to place order' });
+  }
+};
+
+// ========== UPDATE ORDER STATUS ==========
+// @desc    Update order status (for staff)
+// @route   PATCH /api/orders/:id/status
+// @access  Private (admin, cashier, cook, delivery)
+const updateOrderStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, notes } = req.body;
+
+    console.log('📝 Update order status request:');
+    console.log('   Order ID:', id);
+    console.log('   New Status:', status);
+    console.log('   User Role:', req.user.role);
+    console.log('   User ID:', req.user._id);
+
+    // Validate status
+    const validStatuses = ['pending', 'confirmed', 'preparing', 'cooking', 'ready', 'out-for-delivery', 'delivered', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    // Find order
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Check permissions based on user role
+    const userRole = req.user.role;
+    const currentStatus = order.status;
+
+    if (currentStatus === status) {
+      return res.status(400).json({
+        message: `Order is already in ${status} status`,
+        currentStatus: status
+      });
+    }
+
+    console.log('   Current Status:', currentStatus);
+    console.log('   Order Number:', order.orderNumber);
+
+    // Define allowed status transitions for each role
+    const allowedTransitions = {
+      admin: {
+        pending: ['confirmed', 'cancelled'],
+        confirmed: ['preparing', 'cancelled'],
+        preparing: ['cooking', 'ready', 'cancelled'],  // ← FIXED: Added 'ready'
+        cooking: ['ready', 'cancelled'],
+        ready: ['out-for-delivery', 'delivered', 'cancelled'],
+        'out-for-delivery': ['delivered', 'cancelled'],
+        delivered: [],
+        cancelled: []
+      },
+      cashier: {
+        pending: ['confirmed', 'cancelled'],
+        confirmed: ['preparing', 'cancelled'],
+        preparing: ['cooking', 'ready', 'cancelled'],  // ← FIXED: Added 'ready'
+        cooking: ['ready', 'cancelled'],
+        ready: ['out-for-delivery', 'delivered', 'cancelled'],
+        'out-for-delivery': ['delivered', 'cancelled'],
+        delivered: [],
+        cancelled: []
+      },
+      cook: {
+        confirmed: ['preparing'],
+        preparing: ['cooking'],
+        cooking: ['ready']
+      },
+      delivery: {
+        ready: ['out-for-delivery'],
+        'out-for-delivery': ['delivered']
+      }
+    };
+
+    // Check if user role has permission
+    if (!allowedTransitions[userRole]) {
+      console.log(`❌ Invalid user role: ${userRole}`);
+      return res.status(403).json({ 
+        message: `Invalid user role: ${userRole}. Only admin, cashier, cook, or delivery can update order status.` 
+      });
+    }
+
+    if (!allowedTransitions[userRole][currentStatus]) {
+      console.log(`❌ No transition defined for status ${currentStatus} for role ${userRole}`);
+      return res.status(403).json({ 
+        message: `You cannot update order status from ${currentStatus} with role ${userRole}` 
+      });
+    }
+
+    if (!allowedTransitions[userRole][currentStatus].includes(status)) {
+      console.log(`❌ Transition not allowed: ${currentStatus} -> ${status} for role ${userRole}`);
+      console.log(`   Allowed transitions: ${allowedTransitions[userRole][currentStatus].join(', ')}`);
+      return res.status(403).json({ 
+        message: `You don't have permission to change order status from ${currentStatus} to ${status}`,
+        allowed: allowedTransitions[userRole][currentStatus],
+        currentStatus: currentStatus,
+        requestedStatus: status,
+        userRole: userRole
+      });
+    }
+
+    // Update order
+    const oldStatus = order.status;
+    order.status = status;
+    
+    // Add to status history
+    if (!order.statusHistory) order.statusHistory = [];
+    order.statusHistory.push({
+      status,
+      changedBy: req.user._id,
+      changedAt: new Date(),
+      notes: notes || `Status changed from ${oldStatus} to ${status} by ${userRole}`
+    });
+
+    // Track cooking time
+    if (status === 'cooking' && !order.cookingStartedAt) {
+      order.cookingStartedAt = new Date();
+    }
+    
+    if (status === 'ready' && order.cookingStartedAt && !order.cookingCompletedAt) {
+      order.cookingCompletedAt = new Date();
+      const diffMs = order.cookingCompletedAt - order.cookingStartedAt;
+      order.cookingTime = Math.round(diffMs / 60000);
+    }
+
+    // Track delivery time
+    if (status === 'out-for-delivery' && !order.deliveryStartedAt) {
+      order.deliveryStartedAt = new Date();
+    }
+    
+    if (status === 'delivered' && order.deliveryStartedAt && !order.deliveryCompletedAt) {
+      order.deliveryCompletedAt = new Date();
+      const diffMs = order.deliveryCompletedAt - order.deliveryStartedAt;
+      order.deliveryTime = Math.round(diffMs / 60000);
+    }
+
+    // If order is cancelled, update payment status
+    if (status === 'cancelled' && order.paymentStatus === 'processing') {
+      order.paymentStatus = 'failed';
+    }
+
+    // Check if order becomes eligible for lottery (when delivered)
+    if (status === 'delivered' && oldStatus !== 'delivered') {
+      if (order.lotteryEligible && !order.lotteryWon) {
+        console.log(`🎫 Order #${order.dailyOrderNumber || order.orderNumber} is now eligible for lottery! Ticket: ${order.lotteryTicketNumber}`);
+        
+        const io = req.app.get('io');
+        if (io) {
+          io.to('staff-admin').emit('lottery-eligible', {
+            orderId: order._id,
+            orderNumber: order.dailyOrderNumber || order.orderNumber,
+            lotteryTicketNumber: order.lotteryTicketNumber,
+            customerName: order.customerName
+          });
+        }
+      }
+    }
+
+    await order.save();
+    console.log(`✅ Order ${order.dailyOrderNumber || order.orderNumber} status updated: ${oldStatus} -> ${status}`);
+
+    // Populate for response
+    await order.populate('customer', 'name email');
+    await order.populate('items.menuItem', 'name price');
+
+    // ========== SOCKET.IO: Notify customer about status change ==========
+    const io = req.app.get('io');
+    if (io) {
+      const statusMessages = {
+        confirmed: 'Your order has been accepted!',
+        cancelled: 'Your order has been cancelled',
+        preparing: 'Your order is being prepared!',
+        cooking: 'Your order is being cooked!',
+        ready: 'Your order is ready!',
+        'out-for-delivery': 'Your order is on the way!',
+        delivered: `Your order has been delivered! Your lottery ticket ${order.lotteryTicketNumber} is now active!`
+      };
+
+      io.to(`order-${order._id}`).emit('order-status-updated', {
+        orderId: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        status: order.status,
+        oldStatus,
+        notes: notes || null,
+        updatedAt: new Date(),
+        lotteryTicketNumber: order.lotteryTicketNumber,
+        message: statusMessages[status] || `Your order is now ${status}`
+      });
+
+      io.to('staff-admin').to('staff-cashier').emit('order-updated', {
+        orderId: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        status: order.status,
+        updatedAt: new Date()
+      });
+
+      console.log(`📢 Status update notification sent for order #${order.dailyOrderNumber || order.orderNumber}: ${oldStatus} -> ${status}`);
+    }
+
+    res.json({
+      success: true,
+      message: `Order status updated to ${status}`,
+      order
+    });
+  } catch (error) {
+    console.error('❌ Update order status error:', error);
+    res.status(500).json({ 
+      message: 'Failed to update order status',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
+// @desc    Get user's orders
+// @route   GET /api/orders/my-orders
+// @access  Private
+const getUserOrders = async (req, res) => {
+  try {
+    const orders = await Order.find({ customer: req.user._id })
+      .populate('items.menuItem')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      count: orders.length,
+      data: orders.map(order => ({
+        ...order.toObject(),
+        lotteryTicketNumber: order.lotteryTicketNumber,
+        lotteryWon: order.lotteryWon,
+        lotteryEligible: order.lotteryEligible && order.status === 'delivered'
+      }))
+    });
+  } catch (error) {
+    console.error('Get user orders error:', error);
+    res.status(500).json({ message: 'Failed to fetch orders' });
+  }
+};
+
+// @desc    Get single order
+// @route   GET /api/orders/:id
+// @access  Private (order owner or admin)
+const getOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id)
+      .select('+guestAccessTokenHash')
+      .populate('items.menuItem')
+      .populate('customer', 'name email phone');
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Check if user owns this order or is admin/staff
+    const isOwner = req.user && order.customer &&
+      order.customer._id.toString() === req.user._id.toString();
+    const isStaff = req.user &&
+      ['admin', 'cashier', 'cook', 'delivery'].includes(req.user.role);
+    const hasGuestAccess = guestTokenMatches(order, req.headers['x-order-access-token']);
+    if (!isOwner && !isStaff && !hasGuestAccess) {
+      return res.status(403).json({ message: 'Not authorized to view this order' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        ...order.toObject(),
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        lotteryTicketNumber: order.lotteryTicketNumber,
+        lotteryWon: order.lotteryWon,
+        lotteryEligible: order.lotteryEligible && order.status === 'delivered'
+      }
+    });
+  } catch (error) {
+    console.error('Get order error:', error);
+    res.status(500).json({ message: 'Failed to fetch order' });
+  }
+};
+
+// @desc    Cancel order
+// @route   PATCH /api/orders/:id/cancel
+// @access  Private (order owner)
+const cancelOrder = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Check if user owns this order
+    if (order.customer.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: 'Not authorized to cancel this order' });
+    }
+
+    // Only allow cancellation if order is still pending
+    if (order.status !== 'pending') {
+      return res.status(400).json({ message: 'Order cannot be cancelled at this stage' });
+    }
+
+    const oldStatus = order.status;
+    order.status = 'cancelled';
+    
+    // Add to status history
+    order.statusHistory.push({
+      status: 'cancelled',
+      changedBy: req.user._id,
+      changedAt: new Date(),
+      notes: 'Cancelled by customer'
+    });
+    
+    // If payment was processing, update payment status
+    if (order.paymentStatus === 'processing') {
+      order.paymentStatus = 'failed';
+    }
+
+    // Mark lottery ticket as ineligible
+    order.lotteryEligible = false;
+
+    await order.save();
+
+    // ========== SOCKET.IO: Notify staff about cancellation ==========
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order-${order._id}`).to('staff-admin').to('staff-cashier').emit('order-cancelled', {
+        orderId: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        cancelledBy: 'customer',
+        reason: 'Cancelled by customer'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Order cancelled successfully',
+      order
+    });
+  } catch (error) {
+    console.error('Cancel order error:', error);
+    res.status(500).json({ message: 'Failed to cancel order' });
+  }
+};
+
+// @desc    Confirm payment
+// @route   POST /api/orders/:id/confirm-payment
+// @access  Private
+const confirmPayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { paymentIntentId } = req.body;
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    const isOwner = req.user && order.customer &&
+      order.customer.toString() === req.user._id.toString();
+    const hasGuestAccess = guestTokenMatches(order, req.headers['x-order-access-token']);
+    if (!isOwner && !hasGuestAccess) {
+      return res.status(403).json({ message: 'Not authorized to confirm payment for this order' });
+    }
+
+    // Verify this is a card order
+    if (order.paymentMethod !== 'card') {
+      return res.status(400).json({ message: 'Not a card payment order' });
+    }
+
+    // Check if already paid
+    if (order.paymentStatus === 'completed') {
+      return res.status(400).json({ message: 'Order already paid' });
+    }
+
+    if (!paymentIntentId || order.stripePaymentIntentId !== paymentIntentId) {
+      return res.status(400).json({ message: 'Payment intent does not match this order' });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (
+      paymentIntent.status !== 'succeeded' ||
+      paymentIntent.metadata.orderId !== order._id.toString() ||
+      paymentIntent.amount !== Math.round(order.totalAmount * 100)
+    ) {
+      return res.status(400).json({ message: 'Payment has not been successfully verified' });
+    }
+
+    // Update order
+    order.paymentStatus = 'completed';
+    order.paidAt = new Date();
+    order.processedBy = req.user?._id || null;
+    order.processedByName = req.user?.name || '';
+    order.processedAt = order.paidAt;
+    await order.save();
+
+    // ========== SOCKET.IO: Notify about payment completion ==========
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order-${order._id}`).to('staff-admin').to('staff-cashier').emit('payment-completed', {
+        orderId: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        paymentMethod: order.paymentMethod,
+        paidAt: order.paidAt,
+        lotteryTicketNumber: order.lotteryTicketNumber
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Payment confirmed successfully',
+      order: {
+        _id: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        paymentStatus: order.paymentStatus,
+        paidAt: order.paidAt,
+        lotteryTicketNumber: order.lotteryTicketNumber
+      }
+    });
+  } catch (error) {
+    console.error('Confirm payment error:', error);
+    res.status(500).json({ message: 'Failed to confirm payment' });
+  }
+};
+
+// ========== CASH PAYMENT FUNCTIONS ==========
+
+// @desc    Process cash payment (for cash on delivery)
+// @route   POST /api/orders/:id/cash-payment
+// @access  Private (staff only)
+const processCashPayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amountReceived } = req.body;
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Check authorization (admin or cashier only)
+    if (!['admin', 'cashier'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Not authorized to process cash payments' });
+    }
+
+    // Verify this is a cash order
+    if (order.paymentMethod !== 'cash') {
+      return res.status(400).json({ message: 'Not a cash order' });
+    }
+
+    // Check if already paid
+    if (order.paymentStatus === 'completed') {
+      return res.status(400).json({ message: 'Order already paid' });
+    }
+
+    // Calculate change
+    const change = amountReceived - order.totalAmount;
+    if (change < 0) {
+      return res.status(400).json({ 
+        message: `Insufficient amount. Need ETB ${(order.totalAmount - amountReceived).toFixed(2)} more` 
+      });
+    }
+
+    // Update order
+    order.paymentStatus = 'completed';
+    order.amountReceived = amountReceived;
+    order.change = change;
+    order.paidAt = new Date();
+    order.processedBy = req.user._id;
+    order.processedByName = req.user.name || '';
+    order.processedAt = order.paidAt;
+    await order.save();
+
+    // ========== SOCKET.IO: Notify about cash payment ==========
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order-${order._id}`).to('staff-admin').to('staff-cashier').emit('payment-completed', {
+        orderId: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        paymentMethod: 'cash',
+        amountReceived,
+        change,
+        paidAt: order.paidAt,
+        lotteryTicketNumber: order.lotteryTicketNumber
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Cash payment processed successfully',
+      order: {
+        _id: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        totalAmount: order.totalAmount,
+        amountReceived,
+        change,
+        paidAt: order.paidAt,
+        paymentStatus: order.paymentStatus,
+        lotteryTicketNumber: order.lotteryTicketNumber
+      }
+    });
+  } catch (error) {
+    console.error('Process cash payment error:', error);
+    res.status(500).json({ message: 'Failed to process cash payment' });
+  }
+};
+
+// @desc    Get orders by payment status (for staff)
+// @route   GET /api/orders/payment-status/:status
+// @access  Private (admin, cashier)
+const getOrdersByPaymentStatus = async (req, res) => {
+  try {
+    const { status } = req.params;
+    const validStatuses = ['pending', 'processing', 'completed', 'failed', 'refunded'];
+    
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid payment status' });
+    }
+
+    const orders = await Order.find({ paymentStatus: status })
+      .populate('customer', 'name email phone')
+      .populate('items.menuItem', 'name price')
+      .sort('-createdAt');
+
+    res.json({
+      success: true,
+      count: orders.length,
+      orders: orders.map(order => ({
+        ...order.toObject(),
+        lotteryTicketNumber: order.lotteryTicketNumber
+      }))
+    });
+  } catch (error) {
+    console.error('Get orders by payment status error:', error);
+    res.status(500).json({ message: 'Failed to fetch orders' });
+  }
+};
+
+// @desc    Get payment status for an order
+// @route   GET /api/orders/:id/payment-status
+// @access  Private
+const getPaymentStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const order = await Order.findById(id).select('paymentStatus paymentMethod paidAt amountReceived change customer lotteryTicketNumber lotteryWon');
+    
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Check if user owns this order or is staff
+    if (order.customer.toString() !== req.user._id.toString() && 
+        !['admin', 'cashier'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+
+    res.json({
+      success: true,
+      paymentStatus: order.paymentStatus,
+      paymentMethod: order.paymentMethod,
+      paidAt: order.paidAt,
+      amountReceived: order.amountReceived,
+      change: order.change,
+      lotteryTicketNumber: order.lotteryTicketNumber,
+      lotteryWon: order.lotteryWon
+    });
+  } catch (error) {
+    console.error('Get payment status error:', error);
+    res.status(500).json({ message: 'Failed to get payment status' });
+  }
+};
+
+// @desc    Refund payment (admin only)
+// @route   POST /api/orders/:id/refund
+// @access  Private (admin only)
+const refundPayment = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    // Check if user is admin
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Only admins can process refunds' });
+    }
+
+    const order = await Order.findById(id);
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Check if order is paid
+    if (order.paymentStatus !== 'completed') {
+      return res.status(400).json({ message: 'Order is not paid' });
+    }
+
+    // For card payments, process refund through Stripe
+    if (order.stripePaymentIntentId && order.paymentMethod === 'card') {
+      try {
+        const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+        await stripe.refunds.create({ 
+          payment_intent: order.stripePaymentIntentId 
+        });
+      } catch (stripeError) {
+        console.error('Stripe refund error:', stripeError);
+        return res.status(500).json({ message: 'Failed to process Stripe refund' });
+      }
+    }
+
+    // Update order
+    order.paymentStatus = 'refunded';
+    order.refundReason = reason;
+    order.refundedAt = new Date();
+    order.lotteryEligible = false; // Make lottery ticket ineligible
+    await order.save();
+
+    // ========== SOCKET.IO: Notify about refund ==========
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`order-${order._id}`).to('staff-admin').emit('payment-refunded', {
+        orderId: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        paymentStatus: 'refunded',
+        refundedAt: order.refundedAt,
+        reason,
+        lotteryTicketNumber: order.lotteryTicketNumber
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Payment refunded successfully',
+      order: {
+        _id: order._id,
+        orderNumber: order.dailyOrderNumber || order.orderNumber,
+        paymentStatus: order.paymentStatus,
+        refundedAt: order.refundedAt,
+        refundReason: reason,
+        lotteryTicketNumber: order.lotteryTicketNumber
+      }
+    });
+  } catch (error) {
+    console.error('Refund payment error:', error);
+    res.status(500).json({ message: 'Failed to process refund' });
+  }
+};
+
+// Keep new numbers above the highest order number from before the counter existed.
+const ORDER_NUMBER_COUNTER_ID = 'orderNumber';
+const ORDER_NUMBER_LENGTH = 4;
+const ORDER_NUMBER_MAX_ATTEMPTS = 25;
+const DAILY_ORDER_NUMBER_LENGTH = 4;
+const ORDER_TIME_ZONE = 'Africa/Addis_Ababa';
+
+const initializeOrderNumberCounter = async () => {
+  const counterExists = await Counter.exists({ _id: ORDER_NUMBER_COUNTER_ID });
+  if (counterExists) {
+    return;
+  }
+
+  const [latestOrder] = await Order.aggregate([
+    { $match: { orderNumber: /^\d+$/ } },
+    { $project: { orderNumberValue: { $toLong: '$orderNumber' } } },
+    { $sort: { orderNumberValue: -1 } },
+    { $limit: 1 }
+  ]);
+  const initialSequence = latestOrder ? Number(latestOrder.orderNumberValue) : 0;
+
+  try {
+    await Counter.create({ _id: ORDER_NUMBER_COUNTER_ID, sequence: initialSequence });
+  } catch (error) {
+    if (error.code !== 11000) {
+      throw error;
+    }
+  }
+};
+
+const generateOrderNumber = async () => {
+  await initializeOrderNumberCounter();
+  const counter = await Counter.findOneAndUpdate(
+    { _id: ORDER_NUMBER_COUNTER_ID },
+    { $inc: { sequence: 1 } },
+    { new: true }
+  );
+
+  if (!counter) {
+    throw new Error('Failed to allocate the next order number');
+  }
+
+  return String(counter.sequence).padStart(ORDER_NUMBER_LENGTH, '0');
+};
+
+const getOrderDateKey = (date) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: ORDER_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
+  return `${values.year}${values.month}${values.day}`;
+};
+
+const generateDailyOrderNumber = async (date) => {
+  const orderDateKey = getOrderDateKey(date);
+  const counterId = `dailyOrderNumber:${orderDateKey}`;
+  let counterExists = await Counter.exists({ _id: counterId });
+
+  if (!counterExists) {
+    const localDayStart = new Date(
+      `${orderDateKey.slice(0, 4)}-${orderDateKey.slice(4, 6)}-${orderDateKey.slice(6, 8)}T00:00:00+03:00`
+    );
+    const localDayEnd = new Date(localDayStart.getTime() + 24 * 60 * 60 * 1000);
+    const existingOrders = await Order.find({
+      createdAt: { $gte: localDayStart, $lt: localDayEnd }
+    }).select('orderNumber dailyOrderNumber').lean();
+    const initialSequence = existingOrders.reduce((max, order) => {
+      const value = Number(order.dailyOrderNumber || order.orderNumber);
+      return Number.isInteger(value) && value <= 10 ** DAILY_ORDER_NUMBER_LENGTH - 1
+        ? Math.max(max, value)
+        : max;
+    }, 0);
+
+    try {
+      await Counter.create({ _id: counterId, sequence: initialSequence });
+    } catch (error) {
+      if (error.code !== 11000) {
+        throw error;
+      }
+    }
+  }
+
+  const counter = await Counter.findOneAndUpdate(
+    { _id: counterId },
+    { $inc: { sequence: 1 } },
+    { new: true }
+  );
+  if (!counter) {
+    throw new Error(`Failed to allocate the daily order number for ${orderDateKey}`);
+  }
+  if (counter.sequence > 10 ** DAILY_ORDER_NUMBER_LENGTH - 1) {
+    throw new Error(`Daily order number limit reached for ${orderDateKey}`);
+  }
+
+  return {
+    orderDateKey,
+    dailyOrderNumber: String(counter.sequence).padStart(DAILY_ORDER_NUMBER_LENGTH, '0')
+  };
+};
+
+// Export all functions
+module.exports = {
+  createOrder,
+  createStaffOrder,
+  getUserOrders,
+  getOrder,
+  cancelOrder,
+  updateOrderStatus,
+  processCashPayment,
+  confirmPayment,
+  getOrdersByPaymentStatus,
+  getPaymentStatus,
+  refundPayment
+};

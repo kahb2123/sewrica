@@ -1,0 +1,858 @@
+/* Import Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Poppins:wght@300;400;500;600&display=swap');
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Ethiopian-inspired color palette */
+:root {
+  --ethiopian-gold: #ef9f22;
+  --ethiopian-green: #0b6965;
+  --ethiopian-red: #b84432;
+  --ethiopian-cream: #fff8e9;
+  --ethiopian-brown: #064b4a;
+  --ethiopian-terracotta: #d46d42;
+  --ethiopian-charcoal: #173d3a;
+  --ethiopian-sand: #e7c987;
+  --text-dark: #173d3a;
+  --text-light: #fff8e9;
+}
+
+/* Top Bar */
+.top-bar {
+  background: linear-gradient(135deg, var(--ethiopian-charcoal) 0%, #1a2632 100%);
+  color: var(--ethiopian-cream);
+  padding: 8px 0;
+  font-size: 0.82rem;
+  font-family: 'Poppins', sans-serif;
+  border-bottom: 2px solid var(--ethiopian-gold);
+  letter-spacing: 0.3px;
+}
+
+.top-bar-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.top-bar-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.top-bar-icon {
+  color: var(--ethiopian-gold);
+  font-size: 0.9rem;
+}
+
+/* Main Navbar */
+.navbar {
+  background: var(--ethiopian-cream);
+  height: 82px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.14);
+  font-family: 'Poppins', sans-serif;
+  transition: all 0.3s ease;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.35);
+}
+
+.navbar-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  height: 82px;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 40px;
+  transition: height 0.3s ease;
+}
+
+.scrolled .navbar-container {
+  height: 80px;
+}
+
+/* Logo Section - Left Aligned with Image */
+.navbar-logo {
+  display: flex;
+  align-items: center;
+  text-decoration: none;
+  gap: 12px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+/* New styles for image logo */
+.logo-image-container {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+  transition: all 0.3s ease;
+  border: 2px solid var(--ethiopian-gold);
+  background-color: var(--ethiopian-cream);
+}
+
+.navbar-logo:hover .logo-image-container {
+  transform: rotate(5deg) scale(1.05);
+  box-shadow: 0 6px 16px rgba(212, 175, 55, 0.4);
+  border-color: var(--ethiopian-brown);
+}
+
+.logo-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.navbar-logo:hover .logo-image {
+  transform: scale(1.1);
+}
+
+/* Old icon-based logo styles - removed/commented out */
+/* .logo-circle {
+  width: 50px;
+  height: 50px;
+  background: linear-gradient(135deg, var(--ethiopian-gold), var(--ethiopian-brown));
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+  transition: transform 0.3s ease;
+}
+
+.navbar-logo:hover .logo-circle {
+  transform: rotate(10deg);
+}
+
+.logo-icon {
+  color: var(--ethiopian-cream);
+  font-size: 1.6rem;
+} */
+
+.logo-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.restaurant-name {
+  color: var(--ethiopian-cream) !important;
+  font-size: 1.4rem;
+  font-weight: 700;
+  line-height: 1.2;
+  font-family: 'Playfair Display', serif;
+  letter-spacing: 0.5px;
+}
+
+.restaurant-cuisine {
+  color: rgba(255, 248, 233, 0.78) !important;
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Desktop Navigation - Centered */
+.nav-menu-desktop {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 30px;
+  flex: 1;
+  justify-content: center;
+}
+
+.nav-link {
+  color: var(--ethiopian-cream) !important;
+  background: transparent;
+  text-decoration: none;
+  font-size: 1rem;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 5px;
+  transition: all 0.3s ease;
+  position: relative;
+  font-family: 'Poppins', sans-serif;
+  letter-spacing: 0.3px;
+}
+
+.nav-link:hover {
+  color: var(--ethiopian-gold) !important;
+}
+
+.nav-link.active {
+  color: var(--ethiopian-gold) !important;
+  font-weight: 600;
+}
+
+.nav-link.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 25px;
+  height: 3px;
+  background: var(--ethiopian-gold);
+  border-radius: 10px;
+  box-shadow: 0 2px 5px rgba(212, 175, 55, 0.3);
+}
+
+/* Right Side Icons */
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  min-width: 0;
+  flex-shrink: 0;
+  justify-content: flex-end;
+}
+
+.language-selector select {
+  min-height: 36px;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 248, 233, 0.45);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ethiopian-cream);
+  font: inherit;
+  cursor: pointer;
+}
+
+.language-selector option {
+  color: #263431;
+  background: #fff;
+}
+
+.mobile-language-selector {
+  display: none;
+}
+
+.nav-icon {
+  color: var(--ethiopian-cream) !important;
+  font-size: 1.2rem;
+  text-decoration: none;
+  position: relative;
+  transition: all 0.3s ease;
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.1);
+}
+
+.nav-icon:hover {
+  color: var(--ethiopian-cream) !important;
+  background: rgba(212, 175, 55, 0.2);
+  transform: translateY(-2px);
+}
+
+.cart-icon-nav {
+  position: relative;
+}
+
+.cart-badge-nav {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background: var(--ethiopian-red);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 600;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--ethiopian-cream);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+.admin-link {
+  background: var(--ethiopian-gold);
+  color: var(--ethiopian-charcoal);
+  text-decoration: none;
+  padding: 6px 16px;
+  border-radius: 25px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  border: 2px solid transparent;
+}
+
+.admin-link:hover {
+  background: transparent;
+  color: var(--ethiopian-gold);
+  border-color: var(--ethiopian-gold);
+  transform: translateY(-2px);
+}
+
+/* Menu Icon - Hidden on Desktop */
+.menu-icon {
+  display: none;
+  font-size: 1.8rem;
+  color: var(--ethiopian-cream);
+  cursor: pointer;
+  z-index: 1002;
+  transition: color 0.3s ease;
+}
+
+.menu-icon:hover {
+  color: var(--ethiopian-gold);
+}
+
+/* Mobile Menu Overlay */
+.mobile-menu-overlay {
+  display: none;
+  position: fixed;
+  top: 90px;
+  left: 0;
+  width: 100%;
+  height: calc(100vh - 90px);
+  background: linear-gradient(135deg, var(--ethiopian-cream) 0%, #f5e6d3 100%);
+  z-index: 1001;
+  transform: translateX(-100%);
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  overflow-y: auto;
+}
+
+.scrolled .mobile-menu-overlay {
+  top: 80px;
+  height: calc(100vh - 80px);
+}
+
+.mobile-menu-overlay.active {
+  transform: translateX(0);
+}
+
+.nav-menu-mobile {
+  list-style: none;
+  padding: 40px;
+  margin: 0;
+}
+
+.mobile-nav-item {
+  margin-bottom: 25px;
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.mobile-menu-overlay.active .mobile-nav-item {
+  animation: slideIn 0.4s ease forwards;
+  animation-delay: calc(0.1s * var(--i));
+}
+
+@keyframes slideIn {
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.mobile-nav-link {
+  color: var(--ethiopian-charcoal);
+  text-decoration: none;
+  font-size: 1.4rem;
+  font-weight: 500;
+  display: block;
+  padding: 12px 0;
+  border-bottom: 2px solid rgba(212, 175, 55, 0.2);
+  transition: all 0.3s ease;
+  font-family: 'Playfair Display', serif;
+}
+
+.mobile-nav-link:hover {
+  color: var(--ethiopian-gold);
+  border-bottom-color: var(--ethiopian-gold);
+  padding-left: 10px;
+}
+
+.mobile-menu-address {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  padding: 30px 40px;
+  background: linear-gradient(135deg, var(--ethiopian-charcoal) 0%, #1a2632 100%);
+  color: var(--ethiopian-cream);
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.mobile-address-item {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  font-size: 0.95rem;
+}
+
+.mobile-address-icon {
+  color: var(--ethiopian-gold);
+  font-size: 1.1rem;
+  width: 20px;
+}
+
+/* Responsive Design */
+@media screen and (max-width: 1024px) {
+  .navbar-container,
+  .top-bar-container {
+    padding: 0 30px;
+  }
+
+  .restaurant-name {
+    font-size: 1.2rem;
+  }
+
+  .nav-menu-desktop {
+    gap: 20px;
+  }
+
+  .navbar-logo {
+    max-width: 34%;
+  }
+
+  .nav-right {
+    gap: 12px;
+  }
+}
+
+@media screen and (max-width: 968px) {
+  .desktop-language-selector {
+    display: none;
+  }
+
+  .mobile-language-selector {
+    display: block;
+    margin: 0 30px 20px;
+  }
+
+  .mobile-language-selector select {
+    width: 100%;
+    min-height: 44px;
+    border-color: rgba(22, 63, 57, 0.25);
+    background: #fff;
+    color: #163f39;
+  }
+
+  .nav-menu-desktop {
+    display: none;
+  }
+
+  .menu-icon {
+    display: block;
+  }
+
+  .mobile-menu-overlay {
+    display: block;
+  }
+
+  .nav-right {
+    min-width: auto;
+  }
+
+  .restaurant-name {
+    font-size: 1.1rem;
+  }
+}
+
+@media screen and (max-width: 768px) {
+  .top-bar {
+    padding: 8px 0;
+  }
+
+  .top-bar-container {
+    flex-direction: column;
+    gap: 5px;
+    text-align: center;
+    padding: 0 20px;
+  }
+
+  .navbar {
+    height: 80px;
+    top: 0;
+  }
+
+  .navbar-container {
+    height: 80px;
+    padding: 0 20px;
+  }
+
+  .scrolled {
+    height: 70px;
+  }
+
+  .scrolled .navbar-container {
+    height: 70px;
+  }
+
+  /* Updated for image logo */
+  .logo-image-container {
+    width: 40px;
+    height: 40px;
+    border-width: 1.5px;
+  }
+
+  /* .logo-circle {
+    width: 40px;
+    height: 40px;
+  }
+
+  .logo-icon {
+    font-size: 1.3rem;
+  } */
+
+  .restaurant-name {
+    font-size: 1rem;
+  }
+
+  .restaurant-cuisine {
+    font-size: 0.6rem;
+  }
+
+  .nav-right {
+    gap: 10px;
+  }
+
+  .nav-icon {
+    width: 35px;
+    height: 35px;
+    font-size: 1rem;
+  }
+
+  .admin-link {
+    padding: 4px 12px;
+    font-size: 0.8rem;
+  }
+
+  .mobile-menu-overlay {
+    top: 80px;
+  }
+
+  .scrolled .mobile-menu-overlay {
+    top: 70px;
+  }
+
+  .nav-menu-mobile {
+    padding: 30px 20px;
+  }
+
+  .mobile-nav-link {
+    font-size: 1.2rem;
+  }
+
+  .mobile-menu-address {
+    padding: 20px;
+  }
+}
+
+@media screen and (max-width: 480px) {
+  .navbar-logo {
+    min-width: auto;
+    gap: 8px;
+  }
+
+  /* Updated for image logo */
+  .logo-image-container {
+    width: 35px;
+    height: 35px;
+  }
+
+  /* .logo-circle {
+    width: 35px;
+    height: 35px;
+  }
+
+  .logo-icon {
+    font-size: 1.1rem;
+  } */
+
+  .restaurant-name {
+    font-size: 0.9rem;
+  }
+
+  .restaurant-cuisine {
+    font-size: 0.5rem;
+  }
+
+  .nav-right {
+    gap: 5px;
+  }
+
+  .nav-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 0.9rem;
+  }
+
+  .navbar-container {
+    padding: 0 12px;
+  }
+
+  .logo-text {
+    min-width: 0;
+  }
+
+  .restaurant-name,
+  .restaurant-cuisine {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .admin-link {
+    display: none;
+  }
+
+  .cart-badge-nav {
+    width: 18px;
+    height: 18px;
+    font-size: 0.6rem;
+  }
+}
+
+/* Desktop hover effects */
+@media (min-width: 969px) {
+  .nav-link::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%) scaleX(0);
+    width: 100%;
+    height: 2px;
+    background: var(--ethiopian-gold);
+    transition: transform 0.3s ease;
+    transform-origin: center;
+  }
+
+  .nav-link:hover::before {
+    transform: translateX(-50%) scaleX(0.8);
+  }
+}
+
+/* Custom scrollbar for mobile menu */
+.mobile-menu-overlay::-webkit-scrollbar {
+  width: 5px;
+}
+
+.mobile-menu-overlay::-webkit-scrollbar-track {
+  background: var(--ethiopian-cream);
+}
+
+.mobile-menu-overlay::-webkit-scrollbar-thumb {
+  background: var(--ethiopian-gold);
+  border-radius: 10px;
+}
+
+.mobile-menu-overlay::-webkit-scrollbar-thumb:hover {
+  background: var(--ethiopian-brown);
+}
+
+/* Ensure proper spacing */
+body {
+  padding-top: 0;
+  font-family: 'Poppins', sans-serif;
+  background: var(--ethiopian-cream);
+}
+
+/* When mobile menu is open */
+body.menu-open {
+  overflow: hidden;
+}
+
+/* User Menu Dropdown */
+.user-menu {
+  position: relative;
+  display: inline-block;
+}
+
+.user-menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: transparent;
+  border: 2px solid var(--ethiopian-gold);
+  border-radius: 50px;
+  color: var(--ethiopian-cream);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.user-menu-btn:hover {
+  background: var(--ethiopian-gold);
+  color: var(--ethiopian-charcoal);
+}
+
+.user-name {
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  min-width: 200px;
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  margin-top: 10px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-10px);
+  transition: all 0.3s ease;
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.user-menu:hover .user-dropdown {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  color: var(--ethiopian-charcoal);
+  text-decoration: none;
+  transition: all 0.3s ease;
+  border-bottom: 1px solid #eee;
+}
+
+.dropdown-item:last-child {
+  border-bottom: none;
+}
+
+.dropdown-item:hover {
+  background: var(--ethiopian-gold);
+  color: white;
+}
+
+.logout-item {
+  color: #dc3545;
+}
+
+.logout-item:hover {
+  background: #dc3545;
+  color: white;
+}
+
+.logout-mobile {
+  color: #dc3545;
+  background: transparent;
+  border: none;
+  width: 100%;
+  text-align: left;
+  font-size: 1.2rem;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+.logout-mobile:hover {
+  color: #ff4444;
+}
+
+.user-info {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--ethiopian-gold);
+}
+
+/* Admin Dropdown Item */
+.admin-dropdown-item {
+  background: #f0f9ff !important;
+  border-left: 4px solid #27ae60 !important;
+  font-weight: 600 !important;
+  color: #27ae60 !important;
+}
+
+.admin-dropdown-item:hover {
+  background: #e1f5e1 !important;
+}
+
+/* Admin Mobile Link */
+.admin-mobile-link {
+  background: linear-gradient(135deg, #27ae60 0%, #229954 100%) !important;
+  color: white !important;
+  border-radius: 8px !important;
+  margin: 5px 15px !important;
+  padding: 12px 20px !important;
+  font-weight: bold !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-shadow: 0 4px 10px rgba(39, 174, 96, 0.3) !important;
+}
+
+.admin-mobile-link:hover {
+  background: linear-gradient(135deg, #229954 0%, #1e8449 100%) !important;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 15px rgba(39, 174, 96, 0.4) !important;
+}
+
+/* Active state for admin link in desktop */
+.nav-link.admin-link {
+  color: #27ae60 !important;
+  font-weight: 600 !important;
+  position: relative;
+}
+
+.nav-link.admin-link::after {
+  content: '';
+  position: absolute;
+  bottom: -5px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background: #27ae60;
+  transform: scaleX(1);
+}
+
+/* New animation for logo */
+@keyframes logoPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.8) rotate(-5deg);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+  }
+}
+
+.logo-image-container {
+  animation: logoPopIn 0.5s ease-out;
+}
+
+/* Add a subtle glow effect when scrolled */
+.navbar.scrolled .logo-image-container {
+  box-shadow: 0 4px 15px rgba(212, 175, 55, 0.5);
+}
