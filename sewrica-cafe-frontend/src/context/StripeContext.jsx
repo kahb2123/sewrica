@@ -15,8 +15,14 @@ export const useStripe = () => {
   return context;
 };
 
-// Initialize Stripe
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY?.trim();
+const hasValidPublishableKey = /^pk_(test|live)_/.test(publishableKey || '');
+
+if (!hasValidPublishableKey) {
+  console.error('Stripe is disabled because VITE_STRIPE_PUBLISHABLE_KEY is missing or invalid.');
+}
+
+const stripePromise = hasValidPublishableKey ? loadStripe(publishableKey) : null;
 
 export const StripeProvider = ({ children }) => {
   const [paymentIntent, setPaymentIntent] = useState(null);
