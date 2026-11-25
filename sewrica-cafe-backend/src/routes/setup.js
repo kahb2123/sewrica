@@ -5,6 +5,10 @@ const MenuItem = require('../models/MenuItem');
 const Order = require('../models/Order');
 const bcrypt = require('bcryptjs');
 
+if (process.env.NODE_ENV === 'production') {
+  router.use((req, res) => res.status(404).json({ message: 'Not found' }));
+}
+
 // ============================================
 // HELPER FUNCTION TO GET SCHEMA INFO
 // ============================================
