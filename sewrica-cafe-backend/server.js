@@ -19,6 +19,7 @@ const allowedOrigins = [
   'https://sewrica-cafe-frontend.vercel.app',
   'https://sewrica-cafe-frontend-git-main-kahb2123s-projects.vercel.app',
   'https://sewrica-cafe-frontend-3gmdpiv67-kahb2123s-projects.vercel.app',
+  'https://intuitive-youth-production-d56f17f0.up.railway.app',
   'https://kahb2123.github.io',
   'https://sewrica-cafe-backend.onrender.com',
   
