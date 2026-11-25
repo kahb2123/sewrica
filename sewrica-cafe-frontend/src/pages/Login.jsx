@@ -13,6 +13,25 @@ import { useAuth } from '../context/AuthContext'; // ✅ ADD THIS IMPORT
 import { useLanguage } from '../context/useLanguage';
 import './Login.css';
 
+const getPostLoginPath = (role, returnTo) => {
+  switch (String(role || '').trim().toLowerCase()) {
+    case 'admin':
+      return '/admin';
+    case 'supply_chain':
+      return '/supply-chain';
+    case 'cook':
+    case 'chef':
+    case 'waiter':
+      return '/staff/dashboard';
+    case 'delivery':
+      return '/staff/delivery';
+    case 'cashier':
+      return '/staff/cashier';
+    default:
+      return returnTo && returnTo !== '/' ? returnTo : '/';
+  }
+};
+
 const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -42,20 +61,7 @@ const Login = () => {
   useEffect(() => {
     if (user && !authLoading && !loading) {
       console.log('User state updated, redirecting based on role:', user.role);
-
-      if (user.role === 'admin') {
-        navigate('/admin', { replace: true });
-      } else if (user.role === 'cook') {
-        navigate('/staff/dashboard', { replace: true });
-      } else if (user.role === 'delivery') {
-        navigate('/staff/delivery', { replace: true });
-      } else if (user.role === 'cashier') {
-        navigate('/staff/cashier', { replace: true });
-      } else if (returnTo && returnTo !== '/') {
-        navigate(returnTo, { replace: true });
-      } else {
-        navigate('/', { replace: true });
-      }
+      navigate(getPostLoginPath(user.role, returnTo), { replace: true });
     }
   }, [user, authLoading, loading, navigate, returnTo]);
 
@@ -146,17 +152,6 @@ const Login = () => {
         if (result && result.success) {
           toast.success(`Welcome back, ${result.user.name || 'User'}!`);
           console.log('Login successful, waiting for auth context to update...');
-          setTimeout(() => {
-            if (window.location.pathname.includes('login')) {
-              const role = result.user.role;
-              if (role === 'admin') window.location.href = '/admin';
-              else if (role === 'cook') window.location.href = '/staff/dashboard';
-              else if (role === 'delivery') window.location.href = '/staff/delivery';
-              else if (role === 'cashier') window.location.href = '/staff/cashier';
-              else if (returnTo && returnTo !== '/') window.location.href = returnTo;
-              else window.location.href = '/';
-            }
-          }, 3000);
         } else {
           toast.error(result?.error || 'Login failed');
         }
