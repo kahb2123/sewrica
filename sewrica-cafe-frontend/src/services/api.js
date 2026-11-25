@@ -3,7 +3,7 @@ import axios from 'axios';
 
 // Get API URL from environment variables
 const API_URL = import.meta.env.VITE_API_URL || 
-  (import.meta.env.PROD ? 'https://sewrica-cafe-backend.onrender.com/api' : 'http://localhost:5000/api');
+  (import.meta.env.PROD ? 'https://sewrica-production.up.railway.app/api' : 'http://localhost:5000/api');
 
 console.log('🔧 API_URL:', API_URL);
 

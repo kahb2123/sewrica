@@ -32,8 +32,9 @@ export const SocketProvider = ({ children }) => {
       return import.meta.env.VITE_API_URL.replace(/\/api$/, '');
     }
     
-    // Default for development
-    return 'http://localhost:5000';
+    return import.meta.env.PROD
+      ? 'https://sewrica-production.up.railway.app'
+      : 'http://localhost:5000';
   };
 
   const SOCKET_URL = getSocketUrl();
