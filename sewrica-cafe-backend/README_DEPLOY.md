@@ -24,10 +24,12 @@ Creating the first Railway admin:
 2. Set it as `ADMIN_BOOTSTRAP_TOKEN` on the Railway backend service and deploy.
 3. Send a `POST` to `/api/setup/bootstrap-admin` with the
    `x-admin-bootstrap-token` header and a JSON body containing `name`, `email`,
-   `phone`, and a unique password of at least 12 characters. Do not send this
-   request from the frontend or share the token/password.
-4. The endpoint only creates an admin if no admin exists. After a successful
-   response, remove `ADMIN_BOOTSTRAP_TOKEN` from Railway and redeploy.
+   `phone`, and a unique password of at least 12 characters. If the email
+   belongs to an existing customer, also provide `currentPassword`; the route
+   verifies it, promotes that account, and replaces its password. Do not send
+   this request from the frontend or share the token/password.
+4. The endpoint only creates or promotes an account if no admin exists. After
+   a successful response, remove `ADMIN_BOOTSTRAP_TOKEN` from Railway and redeploy.
 
 Legacy `/api/setup` routes are disabled in production. Public registration at
 `/api/auth/register` creates customer accounts only; it cannot grant admin access.

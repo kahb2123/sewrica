@@ -27,16 +27,15 @@ router.post('/bootstrap-admin', async (req, res) => {
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
   const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
   const password = typeof req.body?.password === 'string' ? req.body.password : '';
+  const currentPassword = typeof req.body?.currentPassword === 'string' ? req.body.currentPassword : '';
   const phone = typeof req.body?.phone === 'string' ? req.body.phone.trim() : '';
 
   if (
-    !name || name.length > 100
-    || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-    || password.length < 12
-    || !phone || phone.length > 30
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    || password.length < 12 || password.length > 128
   ) {
     return res.status(400).json({
-      message: 'Provide a valid name, email, phone, and a password of at least 12 characters'
+      message: 'Provide a valid email and a new password of 12 to 128 characters'
     });
   }
 
@@ -55,24 +54,45 @@ router.post('/bootstrap-admin', async (req, res) => {
       return res.status(409).json({ message: 'An admin account already exists' });
     }
 
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({ message: 'That email is already registered; use a different email' });
-    }
+    const existingUser = await User.findOne({ email }).select('+password');
+    let admin;
+    let message;
 
-    const hashedPassword = await bcrypt.hash(password, 12);
-    const admin = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-      role: 'admin',
-      phone,
-      isActive: true
-    });
+    if (existingUser) {
+      if (
+        !currentPassword
+        || !existingUser.password
+        || !(await bcrypt.compare(currentPassword, existingUser.password))
+      ) {
+        return res.status(401).json({ message: 'Current account password is incorrect' });
+      }
+
+      existingUser.role = 'admin';
+      existingUser.password = await bcrypt.hash(password, 12);
+      await existingUser.save();
+      admin = existingUser;
+      message = 'Existing account promoted to admin. Remove ADMIN_BOOTSTRAP_TOKEN from Railway now.';
+    } else {
+      if (!name || name.length > 100 || !phone || phone.length > 30) {
+        return res.status(400).json({
+          message: 'For a new account, provide a name and phone number'
+        });
+      }
+
+      admin = await User.create({
+        name,
+        email,
+        password: await bcrypt.hash(password, 12),
+        role: 'admin',
+        phone,
+        isActive: true
+      });
+      message = 'Admin account created. Remove ADMIN_BOOTSTRAP_TOKEN from Railway now.';
+    }
 
     return res.status(201).json({
       success: true,
-      message: 'Admin account created. Remove ADMIN_BOOTSTRAP_TOKEN from Railway now.',
+      message,
       admin: { name: admin.name, email: admin.email, role: admin.role }
     });
   } catch (error) {
