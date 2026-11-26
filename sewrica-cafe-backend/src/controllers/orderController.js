@@ -437,9 +437,10 @@ const updateOrderStatus = async (req, res) => {
         cancelled: []
       },
       cook: {
-        confirmed: ['preparing'],
-        preparing: ['cooking'],
-        cooking: ['ready']
+        pending: ['cancelled'],
+        confirmed: ['preparing', 'cancelled'],
+        preparing: ['cooking', 'cancelled'],
+        cooking: ['ready', 'cancelled']
       },
       delivery: {
         ready: ['out-for-delivery'],

@@ -275,7 +275,7 @@ const getStaffPerformance = async (start, end, roleFilter) => {
         totalOrders: row.totalOrders || 0,
         completedOrders: row.completed || 0,
         cancelledOrders: row.cancelled || 0,
-        revenue: round2(row.revenue),
+        revenue: member.role === 'cook' ? 0 : round2(row.revenue),
         avgCookingMinutes: row.avgCookingMinutes ? Math.round(row.avgCookingMinutes) : null,
         cashCollected: round2(row.cashCollected || 0),
         completionRate: row.totalOrders ? Math.round((row.completed / row.totalOrders) * 100) : 0

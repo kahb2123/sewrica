@@ -1086,7 +1086,8 @@ router.post('/orders/:orderId/assign-chef',
 
       const updated = await Order.findById(orderId)
         .populate('assignedChef', 'name')
-        .populate('assignedDelivery', 'name');
+        .populate('assignedDelivery', 'name')
+        .populate('assignedWaiter', 'name');
 
       res.json({ success: true, message: 'Chef assigned', order: updated });
     } catch (error) {
@@ -1146,7 +1147,8 @@ router.post('/orders/:orderId/assign-delivery',
 
       const updated = await Order.findById(orderId)
         .populate('assignedChef', 'name')
-        .populate('assignedDelivery', 'name');
+        .populate('assignedDelivery', 'name')
+        .populate('assignedWaiter', 'name');
 
       res.json({ success: true, message: 'Delivery person assigned', order: updated });
     } catch (error) {

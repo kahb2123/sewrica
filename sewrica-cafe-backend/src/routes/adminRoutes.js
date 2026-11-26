@@ -325,6 +325,8 @@ router.post('/orders/:orderId/assign-delivery', async (req, res) => {
     await order.save();
     await order.populate('customer', 'name email phone address');
     await order.populate('assignedDelivery', 'name email phone');
+    await order.populate('assignedWaiter', 'name');
+    await order.populate('assignedChef', 'name');
 
     const io = req.app.get('io');
     if (io) {
@@ -391,6 +393,8 @@ router.post('/orders/:orderId/assign-waiter', async (req, res) => {
     order.assignedAt.waiter = new Date();
     await order.save();
     await order.populate('assignedWaiter', 'name email');
+    await order.populate('assignedDelivery', 'name');
+    await order.populate('assignedChef', 'name');
 
     const io = req.app.get('io');
     if (io) {
