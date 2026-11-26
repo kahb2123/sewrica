@@ -29,17 +29,42 @@ const hasAssignedStaff = (order) => Boolean(
 const getAssignedStaffId = (staff) => (
   typeof staff === 'string' ? staff : staff?._id || ''
 );
+const parseTimestamp = (value) => {
+  if (value == null) return null;
+
+  let timestampValue = value;
+  if (timestampValue && typeof timestampValue === 'object' && !(timestampValue instanceof Date)) {
+    if ('$date' in timestampValue) {
+      return parseTimestamp(timestampValue.$date);
+    } else if ('$numberLong' in timestampValue) {
+      timestampValue = Number(timestampValue.$numberLong);
+    } else if ('seconds' in timestampValue || '_seconds' in timestampValue) {
+      const seconds = Number(timestampValue.seconds ?? timestampValue._seconds);
+      const nanoseconds = Number(timestampValue.nanoseconds ?? timestampValue._nanoseconds ?? 0);
+      timestampValue = seconds * 1000 + Math.floor(nanoseconds / 1000000);
+    }
+  }
+
+  if (typeof timestampValue === 'number' && Math.abs(timestampValue) < 1e12) {
+    timestampValue *= 1000;
+  }
+  const timestamp = new Date(timestampValue).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+};
 const getOrderTimestamp = (order) => {
-  for (const value of [order.createdAt, order.created_at, order.orderedAt, order.orderDate]) {
-    if (value == null) continue;
-    const dateValue = value && typeof value === 'object' && '$date' in value
-      ? value.$date
-      : value;
-    const timestampValue = dateValue && typeof dateValue === 'object' && '$numberLong' in dateValue
-      ? Number(dateValue.$numberLong)
-      : dateValue;
-    const timestamp = new Date(timestampValue).getTime();
-    if (Number.isFinite(timestamp)) return timestamp;
+  const historyTimestamps = (order.statusHistory || [])
+    .map((entry) => entry.changedAt || entry.changed_at)
+    .filter((value) => value != null);
+
+  for (const value of [
+    order.createdAt,
+    order.created_at,
+    order.orderedAt,
+    order.orderDate,
+    ...historyTimestamps
+  ]) {
+    const timestamp = parseTimestamp(value);
+    if (timestamp !== null) return timestamp;
   }
   return null;
 };

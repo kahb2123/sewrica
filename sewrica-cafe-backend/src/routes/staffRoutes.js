@@ -1047,7 +1047,14 @@ router.get('/orders/kitchen',
         .populate('assignedWaiter', 'name')
         .populate('items.menuItem');
 
-      res.json(orders || []);
+      res.json((orders || []).map((order) => {
+        const orderData = order.toObject();
+        const originalStatus = orderData.statusHistory?.find((entry) => entry.status === 'pending');
+        const orderedAt = orderData.createdAt || orderData.created_at ||
+          originalStatus?.changedAt || orderData.statusHistory?.[0]?.changedAt || null;
+
+        return { ...orderData, orderedAt };
+      }));
     } catch (error) {
       console.error('Kitchen orders fetch error:', error);
       res.status(500).json({ message: 'Failed to fetch kitchen orders' });
