@@ -1025,8 +1025,8 @@ const DAILY_ORDER_NUMBER_LENGTH = 4;
 const ORDER_TIME_ZONE = 'Africa/Addis_Ababa';
 
 const initializeOrderNumberCounter = async () => {
-  const counterExists = await Counter.exists({ _id: ORDER_NUMBER_COUNTER_ID });
-  if (counterExists) {
+  const counter = await Counter.findById(ORDER_NUMBER_COUNTER_ID);
+  if (counter) {
     return;
   }
 
@@ -1076,9 +1076,9 @@ const getOrderDateKey = (date) => {
 const generateDailyOrderNumber = async (date) => {
   const orderDateKey = getOrderDateKey(date);
   const counterId = `dailyOrderNumber:${orderDateKey}`;
-  let counterExists = await Counter.exists({ _id: counterId });
+  const existingCounter = await Counter.findById(counterId);
 
-  if (!counterExists) {
+  if (!existingCounter) {
     const localDayStart = new Date(
       `${orderDateKey.slice(0, 4)}-${orderDateKey.slice(4, 6)}-${orderDateKey.slice(6, 8)}T00:00:00+03:00`
     );
