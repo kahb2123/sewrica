@@ -352,13 +352,13 @@ const getAllCategories = async (req, res) => {
       'burgers', 'sandwiches', 'pizza', 'traditional', 'fastfood', 'wraps',
       'fetira', 'beverages', 'soft-drinks', 'hot-drinks', 'desserts'
     ];
-    const [itemCategories, savedCategories] = await Promise.all([
-      MenuItem.distinct('category', {}, { maxTimeMS: 30000 }),
+    const [menuItems, savedCategories] = await Promise.all([
+      MenuItem.find().select('category').lean(),
       MenuCategory.find().select('value').lean()
     ]);
     const categories = [...new Set([
       ...builtInCategories,
-      ...itemCategories,
+      ...menuItems.map(({ category }) => category),
       ...savedCategories.map(({ value }) => value)
     ])];
     
@@ -402,7 +402,8 @@ const createCategory = async (req, res) => {
     }
 
     const existing = await MenuCategory.findOne({ value });
-    if (existing || await MenuItem.exists({ category: value })) {
+    const itemWithCategory = await MenuItem.findOne({ category: value });
+    if (existing || itemWithCategory) {
       return res.status(409).json({ success: false, message: 'This category already exists' });
     }
 
