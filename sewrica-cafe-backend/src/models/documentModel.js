@@ -25,6 +25,7 @@ const isDateLike = (value) => value instanceof Date || (
 );
 
 const revive = (value, key = '', customDateFields = []) => {
+  if (value instanceof Date) return new Date(value.getTime());
   if (Array.isArray(value)) return value.map((entry) => revive(entry, key, customDateFields));
   if (!value || typeof value !== 'object') {
     if ((DATE_FIELDS.has(key) || /At$/.test(key) || customDateFields.includes(key)) && isDateLike(value)) {
@@ -488,10 +489,19 @@ const createModel = (name, options = {}) => {
 
   const rowsFrom = async (connection, lock = false) => {
     const [rows] = await connection.query(
-      `SELECT document_json FROM app_documents WHERE collection_name = ?${lock ? ' FOR UPDATE' : ''}`,
+      `SELECT document_id, document_json, created_at, updated_at
+       FROM app_documents WHERE collection_name = ?${lock ? ' FOR UPDATE' : ''}`,
       [collection]
     );
-    return rows.map((row) => parseRow(row.document_json));
+    const hasValidDate = (value) => value != null && Number.isFinite(new Date(value).getTime());
+    return rows.map((row) => {
+      const document = parseRow(row.document_json);
+      if (name === 'Order') {
+        if (!hasValidDate(document.createdAt) && row.created_at) document.createdAt = new Date(row.created_at);
+        if (!hasValidDate(document.updatedAt) && row.updated_at) document.updatedAt = new Date(row.updated_at);
+      }
+      return document;
+    });
   };
 
   const saveRecord = async (record, sessionConnection) => {
