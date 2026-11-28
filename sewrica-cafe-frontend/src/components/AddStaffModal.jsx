@@ -12,7 +12,7 @@ const PAGE_ACCESS_LABELS = {
 };
 
 // Get the API base URL from environment or use default
-const API_URL = import.meta.env.VITE_API_URL || 'https://sewrica-production.up.railway.app/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://sewrica-cafe-backend.onrender.com/api';
 
 const AddStaffModal = ({ isOpen, onClose, onStaffAdded, editMode = false, staffData = null }) => {
   const [formData, setFormData] = useState(editMode && staffData ? {

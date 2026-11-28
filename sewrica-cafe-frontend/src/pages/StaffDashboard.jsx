@@ -1,15 +1,16 @@
 // src/pages/StaffDashboard.jsx
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { staffService, PERMISSIONS } from '../services/api';
 import { useSocket } from '../context/SocketContext';
 import { useLanguage } from '../context/useLanguage';
 import StaffTaskCard from '../components/StaffTaskCard';
+import Pagination from '../components/Pagination';
+import usePagination from '../hooks/usePagination';
 import KitchenDisplayTab from './admin/tabs/KitchenDisplayTab';
 import StockTab from './admin/tabs/StockTab';
 import ExpenseTab from './admin/tabs/ExpenseTab';
-import ReportsTab from './admin/tabs/ReportsTab';
 import StaffOrderEntry from './staff/StaffOrderEntry';
 import { toast } from 'react-toastify';
 import scrollToPageTop from '../utils/scrollToPageTop';
@@ -98,6 +99,10 @@ const groupOrdersByLocation = (orders, role, completed = false) => {
       sourceOrders,
       items: [...itemMap.values()],
       totalAmount: sourceOrders.reduce((total, order) => total + (Number(order.totalAmount) || 0), 0),
+      paidAmount: sourceOrders.reduce(
+        (total, order) => total + (order.paymentStatus === 'completed' ? Number(order.totalAmount) || 0 : 0),
+        0
+      ),
       customerPhone: [...new Set(sourceOrders.map((order) => order.customerPhone).filter(Boolean))].join(', ') || '',
       status: statuses.length === 1 ? statuses[0] : 'multiple',
       createdAt: oldestCreatedAt,
@@ -110,9 +115,11 @@ const groupOrdersByLocation = (orders, role, completed = false) => {
 const StaffDashboard = () => {
   const { user, logout, hasRole, canReadPage, canWritePage } = useAuth();
   const { t } = useLanguage();
+  const location = useLocation();
   const navigate = useNavigate();
+  const isTvMode = new URLSearchParams(location.search).get('mode') === 'tv';
   const { connected, onOrderAssigned, onOrderReady } = useSocket();
-  const [activeTab, setActiveTab] = useState(user?.role?.toLowerCase() === 'waiter' ? 'order-entry' : 'tasks');
+  const [activeTab, setActiveTab] = useState(isTvMode ? 'kitchen' : user?.role?.toLowerCase() === 'waiter' ? 'order-entry' : 'tasks');
   const [activeSubTab, setActiveSubTab] = useState('tasks');
   const [tasks, setTasks] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
@@ -218,7 +225,17 @@ const StaffDashboard = () => {
       let activeTasks = [];
       let completed = [];
       
-      if (canReadPage('staffOrdersCooking')) {
+      if (userRole === 'cashier') {
+        const response = await staffService.getCashierTasks();
+        const tasksArray = extractArray(response, []);
+
+        activeTasks = tasksArray.filter(t =>
+          t.paymentStatus === 'pending' || t.status === 'pending'
+        );
+        completed = tasksArray.filter(t =>
+          t.paymentStatus === 'completed' || t.status === 'completed'
+        );
+      } else if (canReadPage('staffOrdersCooking')) {
         const response = await staffService.getMyCookingOrders();
         const orders = extractArray(response, []);
         
@@ -257,16 +274,6 @@ const StaffDashboard = () => {
         activeTasks = groupOrdersByLocation(activeOrders, 'waiter');
         completed = groupOrdersByLocation(completedOrders, 'waiter', true);
 
-      } else if (userRole === 'cashier') {
-        const response = await staffService.getCashierTasks();
-        const tasksArray = extractArray(response, []);
-        
-        activeTasks = tasksArray.filter(t => 
-          t.paymentStatus === 'pending' || t.status === 'pending'
-        );
-        completed = tasksArray.filter(t => 
-          t.paymentStatus === 'completed' || t.status === 'completed'
-        );
       }
 
       if (userRole === 'waiter' || userRole === 'delivery') {
@@ -331,8 +338,13 @@ const StaffDashboard = () => {
       return;
     }
 
+    if (isTvMode) {
+      setLoading(false);
+      return;
+    }
+
     fetchTasks();
-  }, [user, canReadPage, fetchTasks, navigate]);
+  }, [user, canReadPage, fetchTasks, navigate, isTvMode]);
 
   useEffect(() => {
     if (connected) {
@@ -384,22 +396,22 @@ const StaffDashboard = () => {
   };
 
   const getRoleSpecificMessage = () => {
+    if (hasRole('cashier')) {
+      return t('Pending payments will appear here');
+    }
     if (canReadPage('staffOrdersCooking')) {
       return t('Orders ready for preparation will appear here');
     }
     if (canReadPage('staffOrdersDelivery')) {
       return t('Orders ready for delivery will appear here');
     }
-    if (hasRole('cashier')) {
-      return t('Pending payments will appear here');
-    }
     return t('Your tasks will appear here');
   };
 
   const getTaskType = () => {
+    if (hasRole('cashier')) return 'cashier';
     if (canReadPage('staffOrdersCooking')) return 'cook';
     if (canReadPage('staffOrdersDelivery')) return 'delivery';
-    if (hasRole('cashier')) return 'cashier';
     return user?.role?.toLowerCase() || 'staff';
   };
 
@@ -420,20 +432,48 @@ const StaffDashboard = () => {
     if (canReadPage('adminExpenses')) {
       tabs.push({ id: 'expenses', label: t('Expenses'), icon: '💸' });
     }
-    if (canReadPage('adminReports')) {
-      tabs.push({ id: 'reports', label: t('Reports'), icon: '📈' });
-    }
     return tabs;
   };
 
   const navTabs = getNavTabs();
   const taskType = getTaskType();
-  const visibleCompletedTasks = taskType === 'waiter'
+  const visibleCompletedTasks = ['waiter', 'delivery'].includes(taskType)
     ? completedTasks.filter((task) => {
-        const completedAt = task.waiterCompletedAt;
+        const completedAt = taskType === 'waiter'
+          ? task.waiterCompletedAt
+          : task.deliveryCompletedAt;
         return completedAt && getTaskDateKey(new Date(completedAt)) === completedDate;
       })
     : completedTasks;
+  const completedItemsByName = new Map();
+  visibleCompletedTasks.forEach((task) => {
+    (task.items || []).forEach((item) => {
+      const itemName = String(item.name || item.menuItem?.name || 'Unknown item').trim() || 'Unknown item';
+      const itemKey = itemName.toLocaleLowerCase();
+      const quantity = Number(item.quantity) || 0;
+      const unitPrice = Number(item.price) || 0;
+      const existing = completedItemsByName.get(itemKey);
+
+      if (existing) {
+        existing.quantity += quantity;
+        existing.totalRevenue += quantity * unitPrice;
+      } else {
+        completedItemsByName.set(itemKey, {
+          key: itemKey,
+          item: itemName,
+          quantity,
+          totalRevenue: quantity * unitPrice
+        });
+      }
+    });
+  });
+  const completedTaskRows = [...completedItemsByName.values()].map((row) => ({
+    ...row,
+    unitPrice: row.quantity ? row.totalRevenue / row.quantity : 0
+  }));
+  const completedRowsPagination = usePagination(completedTaskRows, 10, completedDate);
+  const completedItemQuantity = completedTaskRows.reduce((total, row) => total + row.quantity, 0);
+  const completedItemRevenue = completedTaskRows.reduce((total, row) => total + row.totalRevenue, 0);
   const canWriteTasks = canWritePage('staffDashboard') && (
     taskType === 'cook'
       ? canWritePage('staffOrdersCooking')
@@ -443,8 +483,8 @@ const StaffDashboard = () => {
   );
 
   return (
-    <div className="staff-dashboard">
-      <div className="dashboard-header">
+    <div className={`staff-dashboard ${isTvMode ? 'tv-mode' : ''}`}>
+      {!isTvMode && <div className="dashboard-header">
         <div className="header-left">
           <div className="staff-avatar-large">
             {getRoleIcon()}
@@ -460,9 +500,9 @@ const StaffDashboard = () => {
             🚪 {t('Logout')}
           </button>
         </div>
-      </div>
+      </div>}
 
-      {navTabs.length > 1 && (
+      {!isTvMode && navTabs.length > 1 && (
         <div className="staff-nav">
           {navTabs.map(tab => (
             <button
@@ -542,7 +582,7 @@ const StaffDashboard = () => {
             </div>
 
             <div className="tasks-container">
-              {taskType === 'waiter' && activeSubTab === 'completed' && (
+              {['waiter', 'delivery'].includes(taskType) && activeSubTab === 'completed' && (
                 <div className="completed-task-filter">
                   <label htmlFor="completed-task-date">{t('Completed date')}</label>
                   <button
@@ -599,22 +639,48 @@ const StaffDashboard = () => {
                   {activeSubTab === 'completed' && (
                     <>
                       {visibleCompletedTasks.length > 0 ? (
-                        visibleCompletedTasks.map(task => (
-                          <StaffTaskCard
-                            key={task._id}
-                            task={task}
-                            type={taskType}
-                            canWrite={canWriteTasks}
-                            onTaskUpdate={handleTaskUpdate}
-                            onChefAccept={handleChefAccept}
-                            onChefReject={handleChefReject}
-                            onStartPreparing={handleStartPreparing}
-                            onMarkReady={handleMarkReady}
-                            onCompleteDelivery={handleCompleteDelivery}
-                            onCompleteWaiterTask={handleCompleteWaiterTask}
-                            onProcessPayment={handleProcessPayment}
+                        <div className="completed-task-table-wrap">
+                          <table className="completed-task-table">
+                            <thead>
+                              <tr>
+                                <th>Item</th>
+                                <th>Quantity</th>
+                                <th>Unit Price</th>
+                                <th>Total Revenue</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {completedTaskRows.length ? completedRowsPagination.pageItems.map((row) => (
+                                <tr key={row.key}>
+                                  <td>{row.item}</td>
+                                  <td className="completed-task-number">{row.quantity}</td>
+                                  <td className="completed-task-number">ETB {row.unitPrice.toFixed(2)}</td>
+                                  <td className="completed-task-number">ETB {row.totalRevenue.toFixed(2)}</td>
+                                </tr>
+                              )) : (
+                                <tr>
+                                  <td colSpan="4">No item details are available for completed tasks.</td>
+                                </tr>
+                              )}
+                            </tbody>
+                            {completedTaskRows.length > 0 && (
+                              <tfoot>
+                                <tr>
+                                  <th>Total</th>
+                                  <th className="completed-task-number">{completedItemQuantity}</th>
+                                  <th aria-label="Average unit price"></th>
+                                  <th className="completed-task-number">ETB {completedItemRevenue.toFixed(2)}</th>
+                                </tr>
+                              </tfoot>
+                            )}
+                          </table>
+                          <Pagination
+                            currentPage={completedRowsPagination.currentPage}
+                            pageSize={completedRowsPagination.pageSize}
+                            totalItems={completedRowsPagination.totalItems}
+                            onPageChange={completedRowsPagination.setPage}
                           />
-                        ))
+                        </div>
                       ) : (
                         <div className="empty-state">
                           <div className="empty-icon">📭</div>
@@ -632,7 +698,10 @@ const StaffDashboard = () => {
 
         {activeTab === 'kitchen' && canReadPage('staffOrdersCooking') && (
           <div className="page-wrapper">
-            <KitchenDisplayTab readOnly={!canWritePage('staffDashboard') || !canWritePage('staffOrdersCooking')} />
+            <KitchenDisplayTab
+              readOnly={isTvMode || !canWritePage('staffDashboard') || !canWritePage('staffOrdersCooking')}
+              tvMode={isTvMode}
+            />
           </div>
         )}
 
@@ -648,16 +717,13 @@ const StaffDashboard = () => {
           </div>
         )}
 
-        {activeTab === 'reports' && canReadPage('adminReports') && (
-          <div className="page-wrapper">
-            <ReportsTab readOnly={!canWritePage('adminReports')} />
-          </div>
-        )}
       </div>
 
-      <div className={`connection-status ${connected ? 'connected' : 'disconnected'}`}>
-        {connected ? '🟢 Connected' : '🔴 Reconnecting...'}
-      </div>
+      {!isTvMode && (
+        <div className={`connection-status ${connected ? 'connected' : 'disconnected'}`}>
+          {connected ? '🟢 Connected' : '🔴 Reconnecting...'}
+        </div>
+      )}
     </div>
   );
 };

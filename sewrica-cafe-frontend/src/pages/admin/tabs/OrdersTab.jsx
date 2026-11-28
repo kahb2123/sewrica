@@ -10,7 +10,24 @@ import CashPaymentModal from '../components/modals/CashPaymentModal';
 import AssignChefModal from '../components/modals/AssignChefModal';
 import AssignDeliveryModal from '../components/modals/AssignDeliveryModal';
 import AssignStaffModal from '../components/modals/AssignStaffModal';
+import Pagination from '../../../components/Pagination';
+import usePagination from '../../../hooks/usePagination';
 import './OrdersTab.css';
+
+const getCafeDateKey = (value) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'Africa/Addis_Ababa',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date).reduce((result, part) => {
+    if (part.type !== 'literal') result[part.type] = part.value;
+    return result;
+  }, {});
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
 
 const OrdersTab = () => {
   const { user, isAuthenticated } = useAuth();
@@ -37,6 +54,10 @@ const OrdersTab = () => {
   const [selectedDeliveryId, setSelectedDeliveryId] = useState('');
   const [selectedWaiterId, setSelectedWaiterId] = useState('');
   const [assignmentNotes, setAssignmentNotes] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [searchStartDate, setSearchStartDate] = useState('');
+  const [searchEndDate, setSearchEndDate] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState({ query: '', startDate: '', endDate: '' });
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -136,7 +157,7 @@ const OrdersTab = () => {
       fetchOrders();
     } catch (error) {
       console.error('Error rejecting order:', error);
-      toast.error('Failed to reject order');
+      toast.error(error.message || 'Failed to reject order');
     }
   };
 
@@ -161,14 +182,14 @@ const OrdersTab = () => {
   };
 
   const handleAssignDelivery = async () => {
-    if (!selectedOrder || !selectedDeliveryId) {
-      toast.error('Please select a delivery person');
-      return;
-    }
+    if (!selectedOrder) return;
 
     try {
+      if (selectedDeliveryId && selectedOrder.assignedWaiter?._id) {
+        await adminService.assignWaiter(selectedOrder._id, '');
+      }
       await adminService.assignDelivery(selectedOrder._id, selectedDeliveryId, assignmentNotes);
-      toast.success('Delivery person assigned successfully');
+      toast.success(selectedDeliveryId ? 'Delivery person assigned successfully' : 'Delivery assignment cleared');
       setShowAssignDeliveryModal(false);
       setSelectedDeliveryId('');
       setAssignmentNotes('');
@@ -218,6 +239,10 @@ const OrdersTab = () => {
 
   const handleQuickAssignDelivery = async (orderId, deliveryId) => {
     try {
+      const order = orders.find((item) => item._id === orderId);
+      if (order?.assignedWaiter?._id) {
+        await adminService.assignWaiter(orderId, '');
+      }
       await adminService.assignDelivery(orderId, deliveryId);
       toast.success('Delivery person assigned successfully');
       fetchOrders();
@@ -228,27 +253,52 @@ const OrdersTab = () => {
     }
   };
 
+  const handleQuickAssignWaiter = async (orderId, waiterId) => {
+    try {
+      await adminService.assignWaiter(orderId, waiterId);
+      toast.success(waiterId ? 'Waiter assigned successfully' : 'Waiter assignment cleared');
+      fetchOrders();
+      fetchAvailableStaff();
+    } catch (error) {
+      console.error('Error assigning waiter:', error);
+      toast.error(error.message || 'Failed to assign waiter');
+    }
+  };
+
   const handleAssignBoth = async () => {
     if (!selectedOrder) return;
-    if (!selectedChefId && !selectedDeliveryId && !selectedWaiterId) {
+    if (selectedDeliveryId && selectedWaiterId) {
+      toast.error('An order cannot have both a waiter and a delivery person assigned');
+      return;
+    }
+    const currentChefId = selectedOrder.assignedChef?._id || '';
+    const currentDeliveryId = selectedOrder.assignedDelivery?._id || '';
+    const currentWaiterId = selectedOrder.assignedWaiter?._id || '';
+    if (!selectedChefId && !selectedDeliveryId && !selectedWaiterId
+      && !currentChefId && !currentDeliveryId && !currentWaiterId) {
       toast.error('Please select at least one staff member');
       return;
     }
 
     setAssigningBoth(true);
     try {
-      const promises = [];
-      if (selectedChefId) {
-        promises.push(adminService.assignChef(selectedOrder._id, selectedChefId, assignmentNotes));
-      }
       if (selectedDeliveryId) {
-        promises.push(adminService.assignDelivery(selectedOrder._id, selectedDeliveryId, assignmentNotes));
-      }
-      if (selectedWaiterId) {
-        promises.push(adminService.assignWaiter(selectedOrder._id, selectedWaiterId));
+        if (currentWaiterId) await adminService.assignWaiter(selectedOrder._id, '');
+        if (selectedDeliveryId !== currentDeliveryId) {
+          await adminService.assignDelivery(selectedOrder._id, selectedDeliveryId, assignmentNotes);
+        }
+      } else {
+        if (currentDeliveryId) await adminService.assignDelivery(selectedOrder._id, '');
+        if (selectedWaiterId && selectedWaiterId !== currentWaiterId) {
+          await adminService.assignWaiter(selectedOrder._id, selectedWaiterId);
+        } else if (!selectedWaiterId && currentWaiterId) {
+          await adminService.assignWaiter(selectedOrder._id, '');
+        }
       }
 
-      await Promise.all(promises);
+      if (selectedChefId && selectedChefId !== currentChefId) {
+        await adminService.assignChef(selectedOrder._id, selectedChefId, assignmentNotes);
+      }
 
       toast.success('Staff assigned successfully');
       setShowAssignStaffModal(false);
@@ -309,6 +359,58 @@ const OrdersTab = () => {
     });
   };
 
+  const handleSearch = (event) => {
+    event.preventDefault();
+    if (searchStartDate && searchEndDate && searchStartDate > searchEndDate) {
+      toast.error('Start date must be on or before end date');
+      return;
+    }
+    setAppliedSearch({
+      query: searchText.trim().toLowerCase(),
+      startDate: searchStartDate,
+      endDate: searchEndDate
+    });
+  };
+
+  const clearSearch = () => {
+    setSearchText('');
+    setSearchStartDate('');
+    setSearchEndDate('');
+    setAppliedSearch({ query: '', startDate: '', endDate: '' });
+  };
+
+  const filteredOrders = orders.filter((order) => {
+    if (appliedSearch.query) {
+      const itemNames = (order.items || []).flatMap((item) => [
+        item.name,
+        typeof item.menuItem === 'object' ? item.menuItem?.name : item.menuItem
+      ]);
+      const searchableValues = [
+        order.orderName,
+        order.customerName,
+        order.customerPhone,
+        order.customer?.name,
+        order.customer?.phone,
+        ...itemNames
+      ];
+      const matchesQuery = searchableValues.some((value) =>
+        String(value || '').toLowerCase().includes(appliedSearch.query)
+      );
+      if (!matchesQuery) return false;
+    }
+
+    const orderDate = getCafeDateKey(order.createdAt);
+    if (appliedSearch.startDate && (!orderDate || orderDate < appliedSearch.startDate)) return false;
+    if (appliedSearch.endDate && (!orderDate || orderDate > appliedSearch.endDate)) return false;
+    return true;
+  });
+  const hasActiveSearch = Boolean(appliedSearch.query || appliedSearch.startDate || appliedSearch.endDate);
+  const orderPagination = usePagination(
+    filteredOrders,
+    10,
+    `${filter}|${appliedSearch.query}|${appliedSearch.startDate}|${appliedSearch.endDate}`
+  );
+
   if (loading) {
     return (
       <div className="loading-container">
@@ -347,11 +449,45 @@ const OrdersTab = () => {
             Delivered ({orders.filter(o => o.status === 'delivered').length})
           </button>
         </div>
+        <form className="order-search" onSubmit={handleSearch}>
+          <div className="order-search-field order-search-query">
+            <label htmlFor="order-search-query">Search item or customer</label>
+            <input
+              id="order-search-query"
+              type="search"
+              value={searchText}
+              onChange={(event) => setSearchText(event.target.value)}
+              placeholder="Food name, customer name, or phone"
+            />
+          </div>
+          <div className="order-search-field">
+            <label htmlFor="order-search-start">From date</label>
+            <input
+              id="order-search-start"
+              type="date"
+              value={searchStartDate}
+              onChange={(event) => setSearchStartDate(event.target.value)}
+            />
+          </div>
+          <div className="order-search-field">
+            <label htmlFor="order-search-end">To date</label>
+            <input
+              id="order-search-end"
+              type="date"
+              value={searchEndDate}
+              onChange={(event) => setSearchEndDate(event.target.value)}
+            />
+          </div>
+          <div className="order-search-actions">
+            <button type="submit" className="order-search-button">Search</button>
+            <button type="button" className="order-search-clear" onClick={clearSearch}>Clear</button>
+          </div>
+        </form>
       </div>
 
       <div className="orders-grid">
-        {orders.length > 0 ? (
-          orders.map(order => (
+        {filteredOrders.length > 0 ? (
+          orderPagination.pageItems.map(order => (
             <div key={order._id} className="order-card">
               <div className="order-card-header">
                 <div>
@@ -394,6 +530,30 @@ const OrdersTab = () => {
                         </select>
                       </div>
                     </div>
+
+                    <div className="assignment-row">
+                      <div className="assignment-current">
+                        <strong>Waiter:</strong> {order.assignedWaiter?.name || 'Not assigned'}
+                        {order.assignedAt?.waiter && (
+                          <span className="assignment-time"> ({formatDate(order.assignedAt.waiter)})</span>
+                        )}
+                      </div>
+                      <div className="assignment-select">
+                        <select
+                          value={order.assignedWaiter?._id || ''}
+                          onChange={(e) => handleQuickAssignWaiter(order._id, e.target.value)}
+                          disabled={Boolean(order.assignedDelivery) || ['cancelled', 'delivered'].includes(order.status) || Boolean(order.waiterCompletedAt)}
+                          className="quick-assign-select"
+                        >
+                          <option value="">
+                            {order.assignedDelivery ? 'Delivery assigned' : order.assignedWaiter ? 'Unassign Waiter' : '🧑‍🍽️ Assign Waiter'}
+                          </option>
+                          {availableWaiters.map((waiter) => (
+                            <option key={waiter._id} value={waiter._id}>{waiter.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
                     
                     <div className="assignment-row">
                       <div className="assignment-current">
@@ -431,9 +591,9 @@ const OrdersTab = () => {
               </div>
 
               <div className="order-card-footer">
-                {order.status === 'pending' && (
+                {['pending', 'confirmed', 'preparing', 'cooking'].includes(order.status) && (
                   <div className="accept-reject-buttons">
-                    <div className="workflow-note">Assign a chef to send this order to the kitchen.</div>
+                    <div className="workflow-note">Orders can be rejected until the kitchen marks them ready.</div>
                     <button onClick={() => {
                       setSelectedOrder(order);
                       setShowRejectModal(true);
@@ -500,9 +660,17 @@ const OrdersTab = () => {
             </div>
           ))
         ) : (
-          <div className="no-orders">No orders found</div>
+          <div className="no-orders">
+            {hasActiveSearch ? 'No orders match your search filters' : 'No orders found'}
+          </div>
         )}
       </div>
+      <Pagination
+        currentPage={orderPagination.currentPage}
+        pageSize={orderPagination.pageSize}
+        totalItems={orderPagination.totalItems}
+        onPageChange={orderPagination.setPage}
+      />
 
       {/* Modals */}
       <RejectOrderModal
@@ -583,9 +751,15 @@ const OrdersTab = () => {
         selectedChefId={selectedChefId}
         setSelectedChefId={setSelectedChefId}
         selectedDeliveryId={selectedDeliveryId}
-        setSelectedDeliveryId={setSelectedDeliveryId}
+        setSelectedDeliveryId={(value) => {
+          setSelectedDeliveryId(value);
+          if (value) setSelectedWaiterId('');
+        }}
         selectedWaiterId={selectedWaiterId}
-        setSelectedWaiterId={setSelectedWaiterId}
+        setSelectedWaiterId={(value) => {
+          setSelectedWaiterId(value);
+          if (value) setSelectedDeliveryId('');
+        }}
         notes={assignmentNotes}
         setNotes={setAssignmentNotes}
         onAssign={handleAssignBoth}

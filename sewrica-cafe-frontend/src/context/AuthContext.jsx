@@ -5,8 +5,6 @@ import { authService, ROLE_PERMISSIONS, ROLE_HIERARCHY, PAGE_ACCESS } from '../s
 
 const AuthContext = createContext();
 
-const normalizeRole = (role) => String(role || 'customer').trim().toLowerCase();
-
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
@@ -55,7 +53,7 @@ export const AuthProvider = ({ children }) => {
         try {
           const userData = JSON.parse(storedUser);
           console.log('🔐 Auth Init - Loaded user:', userData);
-          setUser({ ...userData, role: normalizeRole(userData.role) });
+          setUser(userData);
         } catch (error) {
           console.error('Error parsing stored user:', error);
           storage.removeItem('user');
@@ -85,7 +83,7 @@ export const AuthProvider = ({ children }) => {
           name: userData.name,
           email: userData.email,
           phone: userData.phone,
-          role: normalizeRole(userData.role)
+          role: userData.role || 'customer'
         };
         
         console.log('🔐 Login - Normalized user:', normalized);

@@ -226,23 +226,37 @@ const project = (document, selection) => {
   return result;
 };
 
-const resolveExpression = (expression, document) => {
+const resolveExpression = (expression, document, variables = {}) => {
   if (typeof expression === 'string') {
-    if (expression.startsWith('$$')) return undefined;
+    if (expression.startsWith('$$')) {
+      const [variable, ...path] = expression.slice(2).split('.');
+      const value = variables[variable];
+      return path.length ? getPath(value, path.join('.')) : value;
+    }
     return expression.startsWith('$') ? getPath(document, expression.slice(1)) : expression;
   }
   if (expression instanceof Date || expression === null || typeof expression !== 'object') return expression;
-  if (Array.isArray(expression)) return expression.map((item) => resolveExpression(item, document));
+  if (Array.isArray(expression)) return expression.map((item) => resolveExpression(item, document, variables));
 
   const [operator, operand] = Object.entries(expression)[0] || [];
   const values = Array.isArray(operand)
-    ? operand.map((item) => resolveExpression(item, document))
+    ? operand.map((item) => resolveExpression(item, document, variables))
     : undefined;
   switch (operator) {
     case '$literal': return operand;
     case '$ifNull': {
-      const options = values || [resolveExpression(operand, document)];
-      return options.find((value) => value !== null && value !== undefined);
+      const options = values || [resolveExpression(operand, document, variables)];
+      return options.find((value) => value !== null && value !== undefined) ?? null;
+    }
+    case '$reduce': {
+      const input = resolveExpression(operand.input, document, variables);
+      if (input == null) return null;
+      if (!Array.isArray(input)) throw new TypeError('$reduce input must resolve to an array');
+      return input.reduce((value, item) => resolveExpression(operand.in, document, {
+        ...variables,
+        value,
+        this: item
+      }), resolveExpression(operand.initialValue, document, variables));
     }
     case '$eq': return equal(values[0], values[1]);
     case '$ne': return !equal(values[0], values[1]);
@@ -253,14 +267,15 @@ const resolveExpression = (expression, document) => {
     case '$in': return (Array.isArray(values[1]) ? values[1] : []).some((value) => equal(values[0], value));
     case '$and': return values.every(Boolean);
     case '$or': return values.some(Boolean);
-    case '$not': return !resolveExpression(operand[0], document);
+    case '$not': return !resolveExpression(operand[0], document, variables);
     case '$cond': {
       const args = Array.isArray(operand) ? operand : [operand.if, operand.then, operand.else];
-      return resolveExpression(args[0], document)
-        ? resolveExpression(args[1], document)
-        : resolveExpression(args[2], document);
+      return resolveExpression(args[0], document, variables)
+        ? resolveExpression(args[1], document, variables)
+        : resolveExpression(args[2], document, variables);
     }
     case '$multiply': return values.reduce((total, value) => total * (Number(value) || 0), 1);
+    case '$add': return values.reduce((total, value) => total + Number(value), 0);
     case '$subtract': {
       const [left, right] = values;
       return left instanceof Date || right instanceof Date || isDateLike(left) || isDateLike(right)
@@ -277,12 +292,12 @@ const resolveExpression = (expression, document) => {
       const array = Array.isArray(values[0]) ? values[0] : [];
       return array[Number(values[1])];
     }
-    case '$size': return Array.isArray(resolveExpression(operand, document))
-      ? resolveExpression(operand, document).length : null;
-    case '$toLong': return Number(resolveExpression(operand, document));
+    case '$size': return Array.isArray(resolveExpression(operand, document, variables))
+      ? resolveExpression(operand, document, variables).length : null;
+    case '$toLong': return Number(resolveExpression(operand, document, variables));
     case '$dateToString': {
       const { format, date, timezone } = operand;
-      const dateValue = resolveExpression(date, document);
+      const dateValue = resolveExpression(date, document, variables);
       if (!dateValue) return null;
       const parsed = new Date(dateValue);
       const offset = typeof timezone === 'string' && /^\+\d{2}:\d{2}$/.test(timezone)
@@ -303,7 +318,7 @@ const resolveExpression = (expression, document) => {
     default: {
       const result = {};
       for (const [key, value] of Object.entries(expression)) {
-        result[key] = resolveExpression(value, document);
+        result[key] = resolveExpression(value, document, variables);
       }
       return result;
     }

@@ -7,6 +7,8 @@ import {
 import { toast } from 'react-toastify';
 import { adminService } from '../../../services/api';
 import scrollToPageTop from '../../../utils/scrollToPageTop';
+import Pagination from '../../../components/Pagination';
+import usePagination from '../../../hooks/usePagination';
 import './ReportsTab.css';
 
 const money = new Intl.NumberFormat('en-ET', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -57,7 +59,7 @@ const ROLE_LABELS = {
   customer: 'Customer'
 };
 
-const REVENUE_TOTAL_ROLES = new Set(['waiter', 'delivery']);
+const REVENUE_ROLES = ['waiter', 'delivery'];
 
 const ReportsTab = () => {
   const [activeTab, setActiveTab] = useState('items');
@@ -66,6 +68,8 @@ const ReportsTab = () => {
   const [range, setRange] = useState(() => ({ start: daysAgo(6), end: daysAgo(0) }));
 
   const [items, setItems] = useState([]);
+  const [itemSummary, setItemSummary] = useState(null);
+  const [reportTotals, setReportTotals] = useState(null);
   const [taxSummary, setTaxSummary] = useState(null);
   const [staff, setStaff] = useState([]);
   const [roleFilter, setRoleFilter] = useState('all');
@@ -102,8 +106,10 @@ const ReportsTab = () => {
           section: activeTab
         });
         if (!cancelled && requestId.current === currentRequestId) {
+            setReportTotals(response?.data?.totals || null);
             if (activeTab === 'items') {
               setItems(response?.data?.topItems || []);
+              setItemSummary(response?.data?.itemSummary || null);
               setTaxSummary(response?.data?.taxSummary || null);
             } else {
               const rows = response?.data?.staff || [];
@@ -113,8 +119,12 @@ const ReportsTab = () => {
       } catch (error) {
         if (!cancelled && requestId.current === currentRequestId) {
           toast.error(error.message || `Failed to load ${activeTab} report`);
-          if (activeTab === 'items') setItems([]);
-          else {
+          setReportTotals(null);
+          if (activeTab === 'items') {
+            setItems([]);
+            setItemSummary(null);
+            setTaxSummary(null);
+          } else {
             setStaff([]);
           }
         }
@@ -202,7 +212,25 @@ const ReportsTab = () => {
   const filteredStaff = roleFilter === 'all'
     ? activeStaff
     : activeStaff.filter((row) => row.role === roleFilter);
-  const revenueStaff = filteredStaff.filter((row) => REVENUE_TOTAL_ROLES.has(row.role));
+  const showStaffRevenue = roleFilter === 'all' || REVENUE_ROLES.includes(roleFilter);
+  const revenueStaff = filteredStaff.filter((row) => REVENUE_ROLES.includes(row.role));
+  const reportResetKey = `${range.start}|${range.end}|${activeTab}|${roleFilter}`;
+  const itemPagination = usePagination(items, 10, reportResetKey);
+  const staffPagination = usePagination(filteredStaff, 10, reportResetKey);
+  const revenueStaffPagination = usePagination(revenueStaff, 10, reportResetKey);
+  const staffItemRows = Object.entries(staffDetail?.itemsBreakdown || {})
+    .sort(([, a], [, b]) => Number(b) - Number(a));
+  const staffDailyRows = Object.entries(staffDetail?.dailyBreakdown || {});
+  const staffItemPagination = usePagination(
+    staffItemRows,
+    10,
+    `${selectedStaff?.id || ''}|${range.start}|${range.end}`
+  );
+  const staffDailyPagination = usePagination(
+    staffDailyRows,
+    10,
+    `${selectedStaff?.id || ''}|${range.start}|${range.end}`
+  );
   const peakStaffRevenue = useMemo(
     () => Math.max(1, ...revenueStaff.map((row) => Number(row.revenue) || 0)),
     [revenueStaff]
@@ -325,11 +353,11 @@ const ReportsTab = () => {
                   </div>
                   <div className="kpi-card">
                     <span className="kpi-label">Units Sold</span>
-                    <strong className="kpi-value">{items.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0)}</strong>
+                    <strong className="kpi-value">{itemSummary?.unitsSold || 0}</strong>
                   </div>
                   <div className="kpi-card">
-                    <span className="kpi-label">Total Revenue</span>
-                    <strong className="kpi-value">{formatMoney(items.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0))}</strong>
+                    <span className="kpi-label">Total Paid Revenue</span>
+                    <strong className="kpi-value">{formatMoney(reportTotals?.paidRevenue)}</strong>
                   </div>
                 </div>
 
@@ -389,7 +417,7 @@ const ReportsTab = () => {
                         <YAxis yAxisId="right" orientation="right" />
                         <Tooltip />
                         <Legend />
-                        <Bar yAxisId="left" dataKey="totalOrders" name="Orders Handled" fill="#c9a227" />
+                        <Bar yAxisId="left" dataKey="unitsSold" name="Units Sold" fill="#c9a227" />
                         <Bar yAxisId="right" dataKey="revenue" name="Total Sales (ETB)" fill="#1e3a2f" />
                       </BarChart>
                     </ResponsiveContainer>
@@ -399,7 +427,7 @@ const ReportsTab = () => {
                 <div className="chart-card">
                   <h2>Revenue by Menu Item</h2>
                   <div className="bar-chart">
-                    {items.map((row) => (
+                    {itemPagination.pageItems.map((row) => (
                       <div key={row._id || row.name} className="bar-row">
                         <span className="bar-label">{row.name}</span>
                         <div className="bar-track">
@@ -412,6 +440,12 @@ const ReportsTab = () => {
                       </div>
                     ))}
                   </div>
+                  <Pagination
+                    currentPage={itemPagination.currentPage}
+                    pageSize={itemPagination.pageSize}
+                    totalItems={itemPagination.totalItems}
+                    onPageChange={itemPagination.setPage}
+                  />
                 </div>
 
                 {taxSummary && (
@@ -516,7 +550,11 @@ const ReportsTab = () => {
                       <span>Total Orders</span>
                       <strong>{staffDetail.summary?.totalOrders || 0}</strong>
                     </div>
-                    {staffDetail.role !== 'cook' && (
+                    <div className="summary-item">
+                      <span>Units Sold</span>
+                      <strong>{staffDetail.summary?.unitsSold || 0}</strong>
+                    </div>
+                    {REVENUE_ROLES.includes(staffDetail.role) && (
                       <div className="summary-item">
                         <span>Paid Revenue</span>
                         <strong>{formatMoney(staffDetail.summary?.paidRevenue)}</strong>
@@ -530,7 +568,7 @@ const ReportsTab = () => {
                       <span>Completion Rate</span>
                       <strong>{staffDetail.summary?.completionRate || 0}%</strong>
                     </div>
-                    {staffDetail.role !== 'cook' && (
+                    {REVENUE_ROLES.includes(staffDetail.role) && (
                       <div className="summary-item">
                         <span>Outstanding</span>
                         <strong>{formatMoney(staffDetail.summary?.outstandingRevenue)}</strong>
@@ -564,17 +602,22 @@ const ReportsTab = () => {
 
                   {staffDetail.itemsBreakdown && Object.keys(staffDetail.itemsBreakdown).length > 0 && (
                     <div className="table-card">
-                      <h2>Items Handled</h2>
+                      <h2>Units Sold by Item</h2>
                       <div className="table-responsive">
                         <table className="report-table">
-                          <thead><tr><th>Item</th><th>Quantity</th></tr></thead>
+                          <thead><tr><th>Item</th><th>Units Sold</th></tr></thead>
                           <tbody>
-                            {Object.entries(staffDetail.itemsBreakdown)
-                              .sort(([, a], [, b]) => Number(b) - Number(a))
+                            {staffItemPagination.pageItems
                               .map(([name, qty]) => <tr key={name}><td className="item-name">{name}</td><td>{qty}</td></tr>)}
                           </tbody>
                         </table>
                       </div>
+                      <Pagination
+                        currentPage={staffItemPagination.currentPage}
+                        pageSize={staffItemPagination.pageSize}
+                        totalItems={staffItemPagination.totalItems}
+                        onPageChange={staffItemPagination.setPage}
+                      />
                     </div>
                   )}
 
@@ -586,24 +629,30 @@ const ReportsTab = () => {
                           <thead>
                             <tr>
                               <th>Date</th><th>Orders</th><th>Completed</th><th>Cancelled</th>
-                              {staffDetail.role !== 'cook' && <th>Order Value</th>}
+                              {REVENUE_ROLES.includes(staffDetail.role) && <th>Order Value</th>}
                               <th>Avg. Cooking</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {Object.entries(staffDetail.dailyBreakdown).map(([date, day]) => (
+                            {staffDailyPagination.pageItems.map(([date, day]) => (
                               <tr key={date}>
                                 <td>{date}</td>
                                 <td>{day.count}</td>
                                 <td>{day.completed}</td>
                                 <td>{day.cancelled}</td>
-                                {staffDetail.role !== 'cook' && <td>{formatMoney(day.totalAmount)}</td>}
+                                {REVENUE_ROLES.includes(staffDetail.role) && <td>{formatMoney(day.totalAmount)}</td>}
                                 <td>{day.avgCookingMinutes == null ? 'N/A' : `${day.avgCookingMinutes} min`}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
                       </div>
+                      <Pagination
+                        currentPage={staffDailyPagination.currentPage}
+                        pageSize={staffDailyPagination.pageSize}
+                        totalItems={staffDailyPagination.totalItems}
+                        onPageChange={staffDailyPagination.setPage}
+                      />
                     </div>
                   )}
 
@@ -622,33 +671,53 @@ const ReportsTab = () => {
                     <strong className="kpi-value">{filteredStaff.length}</strong>
                   </div>
                   <div className="kpi-card">
-                    <span className="kpi-label">Total Orders Handled</span>
-                    <strong className="kpi-value">{filteredStaff.reduce((sum, row) => sum + (Number(row.totalOrders) || 0), 0)}</strong>
+                    <span
+                      className="kpi-label"
+                      title="Unique units on paid cafe orders, matching the Menu Items Report. Per-staff unit totals are attributed separately."
+                    >
+                      Total Units Sold
+                    </span>
+                    <strong className="kpi-value">{reportTotals?.unitsSold || 0}</strong>
                   </div>
-                  <div className="kpi-card">
-                    <span className="kpi-label">Waiter & Delivery Revenue</span>
-                    <strong className="kpi-value">{formatMoney(revenueStaff.reduce((sum, row) => sum + (Number(row.revenue) || 0), 0))}</strong>
-                  </div>
+                  {showStaffRevenue && (
+                    <div
+                      className="kpi-card"
+                      title="Unique paid order totals, matching the Menu Items Report. Per-staff revenue and units are attributed separately."
+                    >
+                      <span className="kpi-label">Total Paid Revenue</span>
+                      <strong className="kpi-value">{formatMoney(reportTotals?.paidRevenue)}</strong>
+                    </div>
+                  )}
                 </div>
 
                 <div className="table-card">
                   <h2>Staff Performance</h2>
                   <div className="table-responsive">
-                    <table className="report-table">
+                    <table className={`report-table staff-performance-table${showStaffRevenue ? ' staff-performance-table--with-revenue' : ''}`}>
+                      <colgroup>
+                        <col style={{ width: '5%' }} />
+                        <col style={{ width: showStaffRevenue ? '19%' : '23%' }} />
+                        <col style={{ width: '17%' }} />
+                        <col style={{ width: '16%' }} />
+                        <col style={{ width: '14%' }} />
+                        {showStaffRevenue && <col style={{ width: '17%' }} />}
+                        <col style={{ width: showStaffRevenue ? '12%' : '25%' }} />
+                      </colgroup>
                       <thead>
                         <tr>
                           <th>#</th>
                           <th>Name</th>
                           <th>Role</th>
                           <th>Orders Handled</th>
-                          <th>Total Revenue</th>
+                          <th title="Units on paid orders attributed to this staff member. Staff totals may overlap.">Units Sold</th>
+                          {showStaffRevenue && <th>Total Revenue</th>}
                           <th>Action</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredStaff.map((row, index) => (
+                        {staffPagination.pageItems.map((row, index) => (
                           <tr key={row.staffId || row._id || index}>
-                            <td><span className="rank-badge">{index + 1}</span></td>
+                            <td><span className="rank-badge">{(staffPagination.currentPage - 1) * staffPagination.pageSize + index + 1}</span></td>
                             <td className="item-name">{row.name || 'Unassigned'}</td>
                             <td>
                               <span className={`role-badge role-${row.role || 'unknown'}`}>
@@ -656,7 +725,10 @@ const ReportsTab = () => {
                               </span>
                             </td>
                             <td>{row.totalOrders || 0}</td>
-                            <td>{row.role === 'cook' ? '—' : formatMoney(row.revenue)}</td>
+                            <td>{row.unitsSold || 0}</td>
+                            {showStaffRevenue && (
+                              <td>{REVENUE_ROLES.includes(row.role) ? formatMoney(row.revenue) : '—'}</td>
+                            )}
                             <td>
                               <button
                                 className="btn-view-detail"
@@ -670,13 +742,19 @@ const ReportsTab = () => {
                       </tbody>
                     </table>
                   </div>
+                  <Pagination
+                    currentPage={staffPagination.currentPage}
+                    pageSize={staffPagination.pageSize}
+                    totalItems={staffPagination.totalItems}
+                    onPageChange={staffPagination.setPage}
+                  />
                 </div>
 
-                {revenueStaff.length > 0 && (
+                {showStaffRevenue && (
                   <div className="chart-card">
-                    <h2>Revenue by Waiter & Delivery Staff</h2>
+                    <h2>Revenue by Waiter and Delivery Staff</h2>
                     <div className="bar-chart">
-                      {revenueStaff.map((row) => (
+                      {revenueStaffPagination.pageItems.map((row) => (
                         <div key={row.staffId || row._id} className="bar-row">
                           <span className="bar-label">{row.name || 'Unassigned'}</span>
                           <div className="bar-track">
@@ -691,6 +769,12 @@ const ReportsTab = () => {
                         </div>
                       ))}
                     </div>
+                    <Pagination
+                      currentPage={revenueStaffPagination.currentPage}
+                      pageSize={revenueStaffPagination.pageSize}
+                      totalItems={revenueStaffPagination.totalItems}
+                      onPageChange={revenueStaffPagination.setPage}
+                    />
                   </div>
                 )}
               </>
